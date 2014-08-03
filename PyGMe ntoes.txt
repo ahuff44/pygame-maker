@@ -1,0 +1,19 @@
+PyGMe
+    todo:
+        add alarm system with named alarms and looping alarms
+        brainstorm for 5 clock minutes how to do collisions symmetrically with no time dependance
+            is the ev_postcollision(self) good enough? is it best? should postcollsions just be ev_end_step?? but readability...
+            maybe do collisions immediately whenever you move (use @property) and do postcollsions later
+
+TODO:
+    Food:
+        no collide with food
+        Make food move when eaten
+    add Rock
+    abstract to a High-level object
+
+howto:
+    game loops: fixed time for physics/AI, flexible time for drawing:
+        http://gameprogrammingpatterns.com/game-loop.html
+    py -> exe:
+        https://docs.google.com/document/d/1fRrfvIAiUR8uqZa_KPDWHZAQIkB443-su7j6cEyFPrI/pub
