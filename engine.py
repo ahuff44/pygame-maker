@@ -11,19 +11,19 @@ import sys
 from pygame.locals import *
 
 
-RIGHT = 0
+RIGHT = 0 # TODO do something with these
 UP    = 1
 LEFT  = 2
 DOWN  = 3
 
 
-FPS = 30
+FPS = 30 # TODO do something with these
 WINDOW_WIDTH = 640
 WINDOW_HEIGHT = 480
 GRID_X = 32
 GRID_Y = 32
 
-MOUSE_POS = [0, 0] #mutable
+MOUSE_POS = [0, 0] # NOTE: mutable
 all_instances = []
 
 class Colors:
@@ -47,8 +47,7 @@ class Colors:
     PURPLE       = (255,   0, 255)
     CYAN         = (  0, 255, 255)
 
-    ALL = (GRAY, NAVYBLUE, WHITE, RED, GREEN, BLUE, \
-                    YELLOW, ORANGE, PURPLE, CYAN)
+    ALL = (GRAY, NAVYBLUE, WHITE, RED, GREEN, BLUE, YELLOW, ORANGE, PURPLE, CYAN)
 
 bgColor = Colors.NAVYBLUE
 
@@ -92,7 +91,7 @@ def main(window_title, init_room_fxn):
             _do_boundary_collisions(temp_all_instances)
             _do_outside_room_events(temp_all_instances)
 
-            for inst in temp_all_instances:
+            for inst in temp_all_instances: # TODO take out and make it a mixin
                 inst.pos_prev = copy(inst.pos)
 
             for inst in temp_all_instances:
@@ -109,17 +108,13 @@ def main(window_title, init_room_fxn):
         raise # pass the exception to the cmd line, which will print it for us
 
 
-def terminate():
-    pg.quit() # redundant because of the try-catch
-    sys.exit()
-
 def _do_boundary_collisions(instances):
     for inst in instances:
         side = get_boundary_touching(inst.rect)
         if side != None:
             inst.ev_boundary_collision(side)
 
-def get_boundary_touching(rect):
+def get_boundary_touching(rect): #TODO rename; and think seriously about the fact that "if get_boundary_touching():" will fail in horrible ways since RIGHT == 0
     if rect.right >= WINDOW_WIDTH:
         return RIGHT
     if rect.left <= 0:
@@ -136,13 +131,6 @@ def _do_outside_room_events(instances):
 
 def is_outside_room(rect):
     return not check_rect_overlap(rect, pg.Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT))
-
-def get_instances_at_position(instances, pos):
-    inst_list = []
-    for inst in instances:
-        if inst.rect != None and check_rect_overlap(inst.rect, pg.Rect(pos[0], pos[1], 0, 0)):
-            inst_list.append(inst)
-    return inst_list
 
 def check_rect_overlap(rect1, rect2): # TODO move into your own rect class?
     return (
@@ -163,7 +151,7 @@ def check_interval_overlap(t1, t2):
 
 def _do_collisions(instances):
     temp_has_collided = set() # a record of all instances that have colllided this step
-    for inst_a, inst_b in _do_find_collisions(temp_all_instances):
+    for inst_a, inst_b in _do_find_collisions(instances):
         print "COLL: ", inst_a.__class__.__name__, inst_b.__class__.__name__
         inst_a.ev_collision(inst_b)
         inst_b.ev_collision(inst_a)
@@ -183,7 +171,7 @@ def _do_find_collisions(instances):
     for i, inst_a in enumerate(instances):
         for inst_b in instances[i+1:]:
             if inst_a == inst_b:
-                raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine)")
+                raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine; there's probably an instance that is on the instance list twice)")
             if (
                     inst_a.rect != None and inst_b.rect != None
                     and check_rect_overlap(inst_a.rect, inst_b.rect)
@@ -191,10 +179,21 @@ def _do_find_collisions(instances):
                 collisions_list.append( (inst_a, inst_b) )
     return tuple(collisions_list)
 
+# Convinience functions:
+
+def terminate(): # TODO make a mixin
+    pg.quit() # redundant because of the try-catch
+    sys.exit()
+
+def get_instances_at_position(instances, pos):
+    inst_list = []
+    for inst in instances:
+        if inst.rect != None and check_rect_overlap(inst.rect, pg.Rect(pos[0], pos[1], 0, 0)):
+            inst_list.append(inst)
+    return inst_list
+
 def destroy(inst):
     all_instances.remove(inst)
-
-# Math:
 
 def clamp(x, a, b):
     ''' Clamps the value of x to be between a and b:

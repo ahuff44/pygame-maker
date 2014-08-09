@@ -25,14 +25,9 @@ class Controller(object):
             if ev.button == 1: #left click
                 # engine.all_instances.append(Food(ev.pos))
                 pass
-        elif ev.type == MOUSEMOTION:
-            global MOUSE_POS
-            MOUSE_POS = sp.array(ev.pos)
-
-        #keyboard interaction
-        elif ev.type == KEYDOWN:
-            if ev.key == K_p:
-                print "example key"
+        # elif ev.type == MOUSEMOTION: # TODO should this be in the engine somewhere?
+        #     global MOUSE_POS # TODO definitely wrong
+        #     MOUSE_POS = sp.array(ev.pos)
 
     def ev_collision(self, other):
         pass
@@ -52,8 +47,9 @@ class Controller(object):
     def update_rect(self):
         self.rect = pg.Rect(self.pos[0], self.pos[1], 0, 0)
     def ev_draw(self, DISPLAY_SURF):
-        radius = 5
-        pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, self.pos, radius)
+        # radius = 5
+        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, self.pos, radius)
+        pass
 
     @staticmethod
     def is_quit_event(ev):
@@ -87,6 +83,21 @@ class Snake(object):
 
         self.update_rect()
 
+        self.neck = SnakeBody(self.calc_neck_position(), None)
+        self.just_eaten = False
+
+    def calc_neck_position(self):
+        neck_x, neck_y = self.pos
+        if self.dir == engine.RIGHT:
+            neck_x -= engine.GRID_X
+        elif self.dir == engine.LEFT:
+            neck_x += engine.GRID_X
+        elif self.dir == engine.DOWN:
+            neck_y -= engine.GRID_Y
+        elif self.dir == engine.UP:
+            neck_y += engine.GRID_Y
+        return sp.array((neck_x, neck_y))
+
     def update_rect(self):
         self.rect = pg.Rect(self.pos[0], self.pos[1], Snake.IMG_X, Snake.IMG_Y)
         # todo is there a better way to do this, just updating the position? I think there is...
@@ -103,11 +114,21 @@ class Snake(object):
             elif self.dir == engine.UP:
                 self.pos[1] -= Snake.IMG_Y
             self.alarm = Snake.MOVE_DELAY
+        if self.just_eaten:
+            old_neck = self.neck
+            self.neck = SnakeBody(self.pos, old_neck)
+            self.just_eaten = False
+        else:
+            self.neck.crawl_to(self.pos)
 
     def ev_collision(self, other):
         print "Snake + ", other.__class__.__name__
         if isinstance(other, Food):
+            self.just_eaten = True
             print "Yum!"
+        if isinstance(other, SnakeBody):
+            print "Ouch!"
+            engine.destroy(self)
 
     def ev_postcollision(self):
         print "Snake post"
@@ -143,6 +164,61 @@ class Snake(object):
         self.update_rect()
         pg.draw.rect(DISPLAY_SURF, Snake.COLOR, self.rect)
 
+class SnakeBody(object):
+    IMG_X = engine.GRID_X
+    IMG_Y = engine.GRID_Y
+
+    COLOR = engine.Colors.BRIGHTGREEN
+    def __init__(self, pos, next_segment):
+        self.pos = sp.array(pos)
+        self.pos_prev = copy(self.pos)
+
+        self.dir = engine.RIGHT
+
+        self.update_rect()
+
+        self.next_segment = next_segment
+
+    def crawl_to(self, pos):
+        """ Call this to move this snake body segment
+            """
+        old_pos = self.pos
+        self.pos = copy(pos)
+        if self.next_segment:
+            self.next_segment.crawl_to(old_pos)
+
+    # GameObject methods:
+
+    def update_rect(self):
+        self.rect = pg.Rect(self.pos[0], self.pos[1], SnakeBody.IMG_X, SnakeBody.IMG_Y)
+
+    def ev_step(self):
+        pass
+
+    def ev_collision(self, other):
+        print "SnakeBody + ", other.__class__.__name__
+
+    def ev_postcollision(self):
+        pass
+
+    def ev_step_begin(self):
+        pass
+
+    def ev_step_end(self):
+        pass
+
+    def ev_boundary_collision(self, side):
+        pass
+
+    def ev_outside_room(self):
+        pass
+
+    def process_event(self, ev):
+        pass
+
+    def ev_draw(self, DISPLAY_SURF):
+        self.update_rect()
+        pg.draw.rect(DISPLAY_SURF, SnakeBody.COLOR, self.rect)
 
 class Food(object):
     IMG_X = 12 # image width
