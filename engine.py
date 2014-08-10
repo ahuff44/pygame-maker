@@ -263,12 +263,11 @@ class Alarm(object):
                 Alarm.all_alarms.remove(self)
 
 class Sprite(object):
-
     @property
     def rect(self):
         return pg.Rect(
-                (engine.GRID_X-self.image_width)/2,
-                (engine.GRID_Y-self.image_height)/2,
+                (GRID_X-self.image_width)/2,
+                (GRID_Y-self.image_height)/2,
                 self.image_width,
                 self.image_height
         )
@@ -278,12 +277,9 @@ class Sprite(object):
         self.image_height = image_height
         self.color = color
 
-    def ev_draw(self, DISPLAY_SURF):
-        pg.draw.rect(DISPLAY_SURF, self.color, self.rect)
+    def ev_draw(self, DISPLAY_SURF, pos): # todo idk how i feel about passing in pos here
+        pg.draw.rect(DISPLAY_SURF, self.color, self.rect.move(*pos))
 Sprite.DEFAULT = Sprite(GRID_X, GRID_Y, Colors.WHITE)
-
-class ActiveCollider(object):
-    pass
 
 class GameObject(object):
     class CollisionType(object):
@@ -292,21 +288,26 @@ class GameObject(object):
         NONE = 0 # NOTE: It's important with the current logic that bool(NONE) is False
         PASSIVE = 1
         ACTIVE = 2
+    collisions = CollisionType.PASSIVE
 
     sprite = Sprite.DEFAULT
 
     @property
     def rect(self):
-        return self.__class__.sprite.rect.move(self.x, self.y)
+        # print "GameObject rect.getter"
+        return self.__class__.sprite.rect.move(*self.pos)
 
     @property
     def pos(self):
+        # print "GameObject pos.getter"
         return (self.x, self.y)
     @pos.setter
     def pos(self, value):
+        # print "GameObject pos.setter"
         self.x, self.y = value
 
     def __init__(self, pos):
+        print "GameObject __init__:", self.__class__.__name__
         self.pos = pos
 
     def ev_step_begin(self):
@@ -320,10 +321,27 @@ class GameObject(object):
     def ev_boundary_collision(self, side):
         pass
     def ev_outside_room(self):
-        gane_room.destroy(self)
+        game_room.destroy(self)
     def ev_step_end(self):
         pass
     def ev_draw(self, DISPLAY_SURF):
-        sprite.ev_draw(DISPLAY_SURF)
+        self.sprite.ev_draw(DISPLAY_SURF, self.pos)
     def ev_destroy(self):
+        print "%s destroyed"%self.__class__.__name__
+
+class GhostObject(GameObject):
+    """ Represents a GameObject that has no position, rectangle, sprite, or collisions
+    """
+
+    collisions = GameObject.CollisionType.NONE
+    sprite = None
+
+    @property
+    def rect(self):
+        return None
+
+    def __init__(self):
+        pass
+
+    def ev_draw(self, DISPLAY_SURF):
         pass
