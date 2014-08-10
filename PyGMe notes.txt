@@ -6,9 +6,6 @@ PyGMe
             maybe do collisions immediately whenever you move (use @property) and do postcollsions later
 
 TODO:
-    Food:
-        no collide with food
-        Make food move when eaten
     add Rock
     abstract to a High-level object
 

@@ -12,13 +12,11 @@ import itertools as itt
 
 
 class Controller(object):
-    def __init__(self):
-        self.x = 16
-        self.y = 16
+    collisions = engine.GameObject.CollisionType.NONE
 
     @property
     def rect(self):
-        return pg.Rect(0,0,0,0)
+        return None
 
     def process_event(self, ev):
         if self.is_quit_event(ev):
@@ -45,8 +43,6 @@ class Controller(object):
     def ev_outside_room(self):
         pass
     def ev_draw(self, DISPLAY_SURF):
-        # radius = 5
-        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, [self.x, self.y], radius)
         pass
 
     @staticmethod
@@ -64,103 +60,8 @@ def create_room():
         room.precreate(Food)
     return room
 
-class Snake(object):
-    MOVE_DELAY = 4
-    IMG_X = engine.GRID_X
-    IMG_Y = engine.GRID_Y
-
-    COLOR = engine.Colors.GREEN
-
-    @property
-    def rect(self):
-        return pg.Rect(self.x, self.y, Snake.IMG_X, Snake.IMG_Y)
-
-    def __init__(self, pos): #todo engine: we'll nee to separate __init__ and create events in order to be able to say friend=instance_create(FriendClass)
-        self.x, self.y = pos
-
-        engine.Alarm.all_alarms.append(engine.Alarm(lambda: self.move(), Snake.MOVE_DELAY, repeat=True))
-
-        self.dir = engine.RIGHT
-        self.next_dir = engine.RIGHT
-
-        self.neck = None
-        self.just_eaten = True
-
-    # def calc_neck_position(self):
-    #     neck_x, neck_y = self.x, self.y
-    #     if self.dir == engine.RIGHT:
-    #         neck_x -= engine.GRID_X
-    #     elif self.dir == engine.LEFT:
-    #         neck_x += engine.GRID_X
-    #     elif self.dir == engine.DOWN:
-    #         neck_y -= engine.GRID_Y
-    #     elif self.dir == engine.UP:
-    #         neck_y += engine.GRID_Y
-    #     return (neck_x, neck_y)
-
-    def move(self):
-        self.dir = self.next_dir
-        if self.just_eaten:
-            old_neck = self.neck
-            self.neck = engine.game_room.create(SnakeBody, (self.x, self.y), old_neck)
-
-            self.just_eaten = False
-        else:
-            self.neck.crawl_to(self.x, self.y)
-
-        if self.dir == engine.RIGHT:
-            self.x += Snake.IMG_X
-        elif self.dir == engine.LEFT:
-            self.x -= Snake.IMG_X
-        elif self.dir == engine.DOWN:
-            self.y += Snake.IMG_Y
-        elif self.dir == engine.UP:
-            self.y -= Snake.IMG_Y
-        else:
-            assert False
-
-    def ev_collision(self, other):
-        if isinstance(other, Food):
-            self.just_eaten = True
-            engine.game_room.destroy(other)
-        if isinstance(other, SnakeBody):
-            engine.game_room.destroy(self)
-
-    def ev_step_begin(self):
-        pass
-    def ev_step(self):
-        pass
-    def ev_step_end(self):
-        pass
-    def ev_boundary_collision(self, side):
-        pass
-    def ev_outside_room(self):
-        engine.game_room.destroy(self)
-
-    def ev_destroy(self):
-        print "Ouch!"
-        sleep(1)
-        engine.terminate()
-
-    def process_event(self, ev):
-        if ev.type == KEYDOWN:
-            if ev.key in [K_LEFT, K_a]:
-                if self.dir != engine.RIGHT:
-                    self.next_dir = engine.LEFT # We need to buffer this as next_dir so that you can't kill yourself by pressing two buttons really quickly and doubling back on yourself
-            if ev.key in [K_RIGHT, K_d]:
-                if self.dir != engine.LEFT:
-                    self.next_dir = engine.RIGHT
-            if ev.key in [K_UP, K_w]:
-                if self.dir != engine.DOWN:
-                    self.next_dir = engine.UP
-            if ev.key in [K_DOWN, K_s]:
-                if self.dir != engine.UP:
-                    self.next_dir = engine.DOWN
-
-    def ev_draw(self, DISPLAY_SURF):
-        pg.draw.rect(DISPLAY_SURF, Snake.COLOR, self.rect)
-
 class SnakeBody(object):
+    collisions = engine.GameObject.CollisionType.PASSIVE
     IMG_X = engine.GRID_X
     IMG_Y = engine.GRID_Y
 
@@ -170,27 +71,34 @@ class SnakeBody(object):
     def rect(self):
         return pg.Rect(self.x, self.y, SnakeBody.IMG_X, SnakeBody.IMG_Y)
 
+    @property
+    def pos(self):
+        return (self.x, self.y)
+    @pos.setter
+    def pos(self, value):
+        self.x, self.y = value
+
     def __init__(self, pos, next_segment):
-        self.x, self.y = pos
+        self.pos = pos
 
         self.dir = engine.RIGHT
 
         self.next_segment = next_segment
 
-    def crawl_to(self, x, y):
+    def crawl_to(self, pos):
         """ Call this to move this snake body segment and the entire rest of the snake
             """
-        old_x, old_y = self.x, self.y
-        self.x, self.y = x, y
+        old_pos = self.pos
+        self.pos = pos
         if self.next_segment:
-            self.next_segment.crawl_to(old_x, old_y)
+            self.next_segment.crawl_to(old_pos)
 
     # GameObject methods:
 
     def ev_step(self):
         pass
     def ev_collision(self, other):
-        print "SnakeBody + ", other.__class__.__name__
+        pass
     def ev_step_begin(self):
         pass
     def ev_step_end(self):
@@ -206,10 +114,9 @@ class SnakeBody(object):
 
     def ev_draw(self, DISPLAY_SURF):
         pg.draw.rect(DISPLAY_SURF, SnakeBody.COLOR, self.rect)
-        # radius = 32 # TODO delete
-        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, [self.x, self.y], radius)
 
 class Food(object):
+    collisions = engine.GameObject.CollisionType.PASSIVE
     IMG_X = 12 # image width
     IMG_Y = 12 # image height
 
@@ -254,6 +161,103 @@ class Food(object):
 
     def ev_draw(self, DISPLAY_SURF):
         pg.draw.rect(DISPLAY_SURF, Food.COLOR, self.rect)
+
+class Snake(object):
+    collisions = engine.GameObject.CollisionType.ACTIVE
+    MOVE_DELAY = 4
+    IMG_X = engine.GRID_X
+    IMG_Y = engine.GRID_Y
+
+    COLOR = engine.Colors.GREEN
+
+    @property
+    def rect(self):
+        return pg.Rect(self.x, self.y, Snake.IMG_X, Snake.IMG_Y)
+
+    @property
+    def pos(self):
+        return (self.x, self.y)
+    @pos.setter
+    def pos(self, value):
+        self.x, self.y = value
+
+    def __init__(self, pos): #todo engine: we'll nee to separate __init__ and create events in order to be able to say friend=instance_create(FriendClass)
+        self.pos = pos
+
+        engine.Alarm.all_alarms.append(engine.Alarm(lambda: self.move(), Snake.MOVE_DELAY, repeat=True))
+
+        self.dir = engine.RIGHT
+        self.next_dir = engine.RIGHT
+
+        self.neck = None
+        self.just_eaten = True
+
+        self.length = 1
+
+    def move(self):
+        self.dir = self.next_dir
+        if self.just_eaten:
+            old_neck = self.neck
+            self.neck = engine.game_room.create(SnakeBody, self.pos, old_neck)
+
+            self.just_eaten = False
+        else:
+            self.neck.crawl_to(self.pos)
+
+        if self.dir == engine.RIGHT:
+            self.x += Snake.IMG_X
+        elif self.dir == engine.LEFT:
+            self.x -= Snake.IMG_X
+        elif self.dir == engine.DOWN:
+            self.y += Snake.IMG_Y
+        elif self.dir == engine.UP:
+            self.y -= Snake.IMG_Y
+        else:
+            assert False
+
+    def ev_collision(self, other):
+        if isinstance(other, Food):
+            self.length += 1
+            print "Length", self.length
+
+            self.just_eaten = True
+            engine.game_room.destroy(other)
+        if isinstance(other, SnakeBody):
+            engine.game_room.destroy(self)
+
+    def ev_step_begin(self):
+        pass
+    def ev_step(self):
+        pass
+    def ev_step_end(self):
+        pass
+    def ev_boundary_collision(self, side):
+        pass
+    def ev_outside_room(self):
+        engine.game_room.destroy(self)
+
+    def ev_destroy(self):
+        print "Ouch!"
+        sleep(1)
+        engine.terminate()
+
+    def process_event(self, ev):
+        if ev.type == KEYDOWN:
+            if ev.key in [K_LEFT, K_a]:
+                if self.dir != engine.RIGHT:
+                    self.next_dir = engine.LEFT # We need to buffer this as next_dir so that you can't kill yourself by pressing two buttons really quickly and doubling back on yourself
+            if ev.key in [K_RIGHT, K_d]:
+                if self.dir != engine.LEFT:
+                    self.next_dir = engine.RIGHT
+            if ev.key in [K_UP, K_w]:
+                if self.dir != engine.DOWN:
+                    self.next_dir = engine.UP
+            if ev.key in [K_DOWN, K_s]:
+                if self.dir != engine.UP:
+                    self.next_dir = engine.DOWN
+
+    def ev_draw(self, DISPLAY_SURF):
+        pg.draw.rect(DISPLAY_SURF, Snake.COLOR, self.rect)
 
 if __name__ == '__main__':
     engine.main('Snake', create_room())

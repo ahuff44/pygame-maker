@@ -7,6 +7,8 @@ from copy import copy
 import pygame as pg
 import scipy as sp
 # from numpy.linalg import norm
+
+import itertools as itt
 import sys
 
 from pygame.locals import *
@@ -50,6 +52,12 @@ class Colors:
 
 bgColor = Colors.NAVYBLUE
 
+def pipe(postprocessor): #TODO move to another file and import
+    def _decorator(fxn):
+        def _fxn(*args, **kwargs):
+            return postprocessor(fxn(*args, **kwargs))
+        return _fxn
+    return _decorator
 
 def main(window_title, first_room):
     global MOUSE_POS
@@ -64,47 +72,52 @@ def main(window_title, first_room):
     try:
         game_room.populate_room()
         while True: # Main game loop
-
-            DISPLAY_SURF.fill(bgColor) #todo move to right before the draw events?
-
-            for inst in copy(game_room.all_instances):
-                inst.ev_step_begin()
-
-            for alarm in Alarm.all_alarms:
-                alarm.ev_step()
-
-            events = pg.event.get() # TODO do I also need to call pygame.event.poll()?
-            #todo enginde idea: have it hold a table of keys and whether or not they're pressed, down, or released
-            for ev in events:
-                for inst in copy(game_room.all_instances):
-                    inst.process_event(ev)
-
-            for inst in copy(game_room.all_instances):
-                inst.ev_step()
-
-            _do_collisions(copy(game_room.all_instances))
-            _do_boundary_collisions(copy(game_room.all_instances))
-            _do_outside_room_events(copy(game_room.all_instances))
-
-            for inst in copy(game_room.all_instances):
-                inst.ev_step_end()
-                # TODO order?
-
-            for inst in copy(game_room.all_instances):
-                inst.ev_draw(DISPLAY_SURF)
-
-            pg.display.update() # TODO difference between this and pg.display.flip()?
-            FPS_CLOCK.tick(FPS)
+            game_tick(FPS_CLOCK, DISPLAY_SURF)
     except:
         pg.quit()
         raise # pass the exception to the cmd line, which will print it for us
 
+def game_tick(FPS_CLOCK, DISPLAY_SURF):
+    global game_room
+
+    DISPLAY_SURF.fill(bgColor) #todo move to right before the draw events?
+
+    for inst in copy(game_room.all_instances):
+        inst.ev_step_begin()
+
+    for alarm in Alarm.all_alarms:
+        alarm.ev_step()
+
+    events = pg.event.get() # TODO do I also need to call pygame.event.poll()?
+    #todo enginde idea: have it hold a table of keys and whether or not they're pressed, down, or released
+    for ev in events:
+        for inst in copy(game_room.all_instances):
+            inst.process_event(ev)
+
+    for inst in copy(game_room.all_instances):
+        inst.ev_step()
+
+    _do_collisions(copy(game_room.all_instances)) # NOTE: This copy() is very important because of filtering I do later
+    _do_boundary_collisions(copy(game_room.all_instances))
+    _do_outside_room_events(copy(game_room.all_instances))
+
+    for inst in copy(game_room.all_instances):
+        inst.ev_step_end()
+        # TODO order?
+
+    for inst in copy(game_room.all_instances):
+        inst.ev_draw(DISPLAY_SURF)
+
+    pg.display.update() # TODO difference between this and pg.display.flip()?
+    FPS_CLOCK.tick(FPS)
+
 
 def _do_boundary_collisions(instances):
     for inst in instances:
-        side = get_boundary_touching(inst.rect)
-        if side != None:
-            inst.ev_boundary_collision(side)
+        if inst.rect:
+            side = get_boundary_touching(inst.rect)
+            if side != None:
+                inst.ev_boundary_collision(side)
 
 def get_boundary_touching(rect): #TODO rename; and think seriously about the fact that "if get_boundary_touching():" will fail in horrible ways since RIGHT == 0
     if rect.right >= WINDOW_WIDTH:
@@ -118,8 +131,9 @@ def get_boundary_touching(rect): #TODO rename; and think seriously about the fac
 
 def _do_outside_room_events(instances):
     for inst in instances:
-        if is_outside_room(inst.rect):
-            inst.ev_outside_room()
+        if inst.rect:
+            if is_outside_room(inst.rect):
+                inst.ev_outside_room()
 
 def is_outside_room(rect):
     return not check_rect_overlap(rect, pg.Rect(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -145,26 +159,25 @@ def _do_collisions(instances):
     for inst_a, inst_b in _do_find_collisions(instances):
         print "Collision detected: %s + %s"%(inst_a.__class__.__name__, inst_b.__class__.__name__) # DEBUG
         inst_a.ev_collision(inst_b)
-        inst_b.ev_collision(inst_a)
 
+@pipe(list)
 def _do_find_collisions(instances):
     ''' Finds collisions among the instances.
-        Naively checks each element against every other element (O(n^2))
-            TODO optimize somehow? Make a Colliding mixin- will definitely help since that filtering is O(n)
-        Will NOT generate symmetric collisions;
-            ie if (a,b) is on the list then (b,a) will NOT also be
+        It completely ignores any instance with collisions == GameObject.CollisionType.NONE
+        It only generates collision events for instances with collisions == GameObject.CollisionType.ACTIVE,
+            but these events can involve the ACTIVE instance colliding with a PASSIVE instacnce
         '''
-    collisions_list = []
-    for i, inst_a in enumerate(instances):
-        for inst_b in instances[i+1:]:
-            if inst_a == inst_b:
-                raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine; there's probably an instance that is on the instance list twice)") # TODO make sure this actually throws this error if there are duplicates
-            if (
-                    inst_a.rect != None and inst_b.rect != None
-                    and check_rect_overlap(inst_a.rect, inst_b.rect)
-            ):
-                collisions_list.append( (inst_a, inst_b) )
-    return tuple(collisions_list)
+    colliding_instances = filter(lambda inst: inst.collisions, instances) # NOTE: This list has been copy()ed before
+    for i, inst_a in enumerate(colliding_instances):
+        if inst_a.collisions == GameObject.CollisionType.ACTIVE:
+            for inst_b in colliding_instances[i+1:]:
+                if inst_a == inst_b:
+                    raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine; there's probably an instance that is on the instance list twice)") # TODO make sure this actually throws this error if there are duplicates
+                if (
+                        inst_a.rect != None and inst_b.rect != None
+                        and check_rect_overlap(inst_a.rect, inst_b.rect)
+                ):
+                    yield (inst_a, inst_b)
 
 # Convinience functions:
 
@@ -172,15 +185,14 @@ def terminate(): # TODO make a mixin to be added to Controllers that automatical
     pg.quit() # redundant because of the try-catch
     sys.exit()
 
+@pipe(list)
 def get_instances_at_position(pos):
     """ Returns a list off all instances that are at the given position
         Calculated by seeing what instances would collide with a point
         """
-    inst_list = []
     for inst in copy(game_room.all_instances):
         if inst.rect != None and check_rect_overlap(inst.rect, pg.Rect(pos[0], pos[1], 0, 0)):
-            inst_list.append(inst)
-    return inst_list
+            yield inst
 
 def clamp(x, a, b):
     ''' Clamps the value of x to be between a and b:
@@ -226,8 +238,7 @@ class Room(object):
     def populate_room(self):
         # TODO should the instances have create events? it seems like they probably should... Or I could delay the actual creation by using a fxn like create(Snake, args, kwargs) but idk which is better
         for class_, args, kwargs in self._instances_to_create:
-            inst = class_(*args, **kwargs)
-            self.all_instances.append(inst)
+            self.create(class_, *args, **kwargs)
 
 # TODO make alarms deorators. you can start them with my_alarm_func.activate
 class Alarm(object):
@@ -251,4 +262,68 @@ class Alarm(object):
             else:
                 Alarm.all_alarms.remove(self)
 
-# class GameObject(object):
+class Sprite(object):
+
+    @property
+    def rect(self):
+        return pg.Rect(
+                (engine.GRID_X-self.image_width)/2,
+                (engine.GRID_Y-self.image_height)/2,
+                self.image_width,
+                self.image_height
+        )
+
+    def __init__(self, image_width, image_height, color):
+        self.image_width = image_width
+        self.image_height = image_height
+        self.color = color
+
+    def ev_draw(self, DISPLAY_SURF):
+        pg.draw.rect(DISPLAY_SURF, self.color, self.rect)
+Sprite.DEFAULT = Sprite(GRID_X, GRID_Y, Colors.WHITE)
+
+class ActiveCollider(object):
+    pass
+
+class GameObject(object):
+    class CollisionType(object):
+        """ See _do_find_collisions() for an explanation of these codes
+        """
+        NONE = 0 # NOTE: It's important with the current logic that bool(NONE) is False
+        PASSIVE = 1
+        ACTIVE = 2
+
+    sprite = Sprite.DEFAULT
+
+    @property
+    def rect(self):
+        return self.__class__.sprite.rect.move(self.x, self.y)
+
+    @property
+    def pos(self):
+        return (self.x, self.y)
+    @pos.setter
+    def pos(self, value):
+        self.x, self.y = value
+
+    def __init__(self, pos):
+        self.pos = pos
+
+    def ev_step_begin(self):
+        pass
+    def process_event(self, ev):
+        pass
+    def ev_step(self):
+        pass
+    def ev_collision(self, other):
+        pass
+    def ev_boundary_collision(self, side):
+        pass
+    def ev_outside_room(self):
+        gane_room.destroy(self)
+    def ev_step_end(self):
+        pass
+    def ev_draw(self, DISPLAY_SURF):
+        sprite.ev_draw(DISPLAY_SURF)
+    def ev_destroy(self):
+        pass
