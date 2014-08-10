@@ -1,11 +1,14 @@
 class PropTest(object):
-    def getx(self):
+    @property
+    def x(self):
         print 'Retrieving'
         return self._x
-    def setx(self, val):
-        print 'Updating'
-        self._x = val
-    x = property(getx, setx)
+    # @x.setter
+    # def x(self, val):
+    #     print 'Updating'
+    #     self._x = val
+
+    # # x = property(getx, setx)
 
     def __init__(self, name):
         print 'Initializing'

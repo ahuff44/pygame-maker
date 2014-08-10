@@ -5,6 +5,7 @@ from pygame.locals import * # TODO remove eventually; currently needed for MOUSE
 
 import scipy as sp
 from copy import copy
+from time import sleep
 
 import functools as ft
 import itertools as itt
@@ -12,31 +13,30 @@ import itertools as itt
 
 class Controller(object):
     def __init__(self):
-        self.pos = sp.array((16, 16))
-        self.pos_prev = copy(self.pos)
+        self.x = 16
+        self.y = 16
 
-        self.update_rect()
+    @property
+    def rect(self):
+        return pg.Rect(0,0,0,0)
+
     def process_event(self, ev):
         if self.is_quit_event(ev):
             engine.terminate()
 
         #mouse interaction:
-        elif ev.type == MOUSEBUTTONUP:
-            if ev.button == 1: #left click
-                # engine.all_instances.append(Food(ev.pos))
-                pass
+        # elif ev.type == MOUSEBUTTONUP:
+        #     if ev.button == 1: #left click
+        #         engine.game_room.create(Food, ev.pos)
+        #         pass
         # elif ev.type == MOUSEMOTION: # TODO should this be in the engine somewhere?
         #     global MOUSE_POS # TODO definitely wrong
         #     MOUSE_POS = sp.array(ev.pos)
-
     def ev_collision(self, other):
         pass
-    def ev_postcollision(self):
-        print "Controller post"
     def ev_step_begin(self):
         pass
     def ev_step(self):
-        # print "Step"
         pass
     def ev_step_end(self):
         pass
@@ -44,11 +44,9 @@ class Controller(object):
         pass
     def ev_outside_room(self):
         pass
-    def update_rect(self):
-        self.rect = pg.Rect(self.pos[0], self.pos[1], 0, 0)
     def ev_draw(self, DISPLAY_SURF):
         # radius = 5
-        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, self.pos, radius)
+        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, [self.x, self.y], radius)
         pass
 
     @staticmethod
@@ -58,14 +56,13 @@ class Controller(object):
             or (ev.type == KEYUP and ev.key == K_ESCAPE)
         )
 
-
-def init_room():
-    all_instances = []
-    all_instances.append(Controller())
-    all_instances.append(Snake([128, 128]))
+def create_room():
+    room = engine.Room()
+    room.precreate(Controller)
+    room.precreate(Snake, [128, 128])
     for _ in range(6):
-        all_instances.append(Food())
-    return all_instances
+        room.precreate(Food)
+    return room
 
 class Snake(object):
     MOVE_DELAY = 4
@@ -73,95 +70,94 @@ class Snake(object):
     IMG_Y = engine.GRID_Y
 
     COLOR = engine.Colors.GREEN
-    def __init__(self, pos): #todo engine: we'll nee to separate __init__ and create events in order to be able to say friend=instance_create(FriendClass)
-        self.pos = sp.array(pos) #todo use this in parent object: , dtype=float)
-        self.pos_prev = copy(self.pos)
 
-        self.alarm = Snake.MOVE_DELAY
+    @property
+    def rect(self):
+        return pg.Rect(self.x, self.y, Snake.IMG_X, Snake.IMG_Y)
+
+    def __init__(self, pos): #todo engine: we'll nee to separate __init__ and create events in order to be able to say friend=instance_create(FriendClass)
+        self.x, self.y = pos
+
+        engine.Alarm.all_alarms.append(engine.Alarm(lambda: self.move(), Snake.MOVE_DELAY, repeat=True))
 
         self.dir = engine.RIGHT
+        self.next_dir = engine.RIGHT
 
-        self.update_rect()
+        self.neck = None
+        self.just_eaten = True
 
-        self.neck = SnakeBody(self.calc_neck_position(), None)
-        self.just_eaten = False
+    # def calc_neck_position(self):
+    #     neck_x, neck_y = self.x, self.y
+    #     if self.dir == engine.RIGHT:
+    #         neck_x -= engine.GRID_X
+    #     elif self.dir == engine.LEFT:
+    #         neck_x += engine.GRID_X
+    #     elif self.dir == engine.DOWN:
+    #         neck_y -= engine.GRID_Y
+    #     elif self.dir == engine.UP:
+    #         neck_y += engine.GRID_Y
+    #     return (neck_x, neck_y)
 
-    def calc_neck_position(self):
-        neck_x, neck_y = self.pos
-        if self.dir == engine.RIGHT:
-            neck_x -= engine.GRID_X
-        elif self.dir == engine.LEFT:
-            neck_x += engine.GRID_X
-        elif self.dir == engine.DOWN:
-            neck_y -= engine.GRID_Y
-        elif self.dir == engine.UP:
-            neck_y += engine.GRID_Y
-        return sp.array((neck_x, neck_y))
-
-    def update_rect(self):
-        self.rect = pg.Rect(self.pos[0], self.pos[1], Snake.IMG_X, Snake.IMG_Y)
-        # todo is there a better way to do this, just updating the position? I think there is...
-
-    def ev_step(self):
-        self.alarm -= 1
-        if self.alarm <= 0:
-            if self.dir == engine.RIGHT:
-                self.pos[0] += Snake.IMG_X
-            elif self.dir == engine.LEFT:
-                self.pos[0] -= Snake.IMG_X
-            elif self.dir == engine.DOWN:
-                self.pos[1] += Snake.IMG_Y
-            elif self.dir == engine.UP:
-                self.pos[1] -= Snake.IMG_Y
-            self.alarm = Snake.MOVE_DELAY
+    def move(self):
+        self.dir = self.next_dir
         if self.just_eaten:
             old_neck = self.neck
-            self.neck = SnakeBody(self.pos, old_neck)
+            self.neck = engine.game_room.create(SnakeBody, (self.x, self.y), old_neck)
+
             self.just_eaten = False
         else:
-            self.neck.crawl_to(self.pos)
+            self.neck.crawl_to(self.x, self.y)
+
+        if self.dir == engine.RIGHT:
+            self.x += Snake.IMG_X
+        elif self.dir == engine.LEFT:
+            self.x -= Snake.IMG_X
+        elif self.dir == engine.DOWN:
+            self.y += Snake.IMG_Y
+        elif self.dir == engine.UP:
+            self.y -= Snake.IMG_Y
+        else:
+            assert False
 
     def ev_collision(self, other):
-        print "Snake + ", other.__class__.__name__
         if isinstance(other, Food):
             self.just_eaten = True
-            print "Yum!"
+            engine.game_room.destroy(other)
         if isinstance(other, SnakeBody):
-            print "Ouch!"
-            engine.destroy(self)
-
-    def ev_postcollision(self):
-        print "Snake post"
+            engine.game_room.destroy(self)
 
     def ev_step_begin(self):
         pass
-
+    def ev_step(self):
+        pass
     def ev_step_end(self):
         pass
-
     def ev_boundary_collision(self, side):
         pass
-
     def ev_outside_room(self):
-        pass
+        engine.game_room.destroy(self)
+
+    def ev_destroy(self):
+        print "Ouch!"
+        sleep(1)
+        engine.terminate()
 
     def process_event(self, ev):
         if ev.type == KEYDOWN:
-            if ev.key == K_LEFT:
+            if ev.key in [K_LEFT, K_a]:
                 if self.dir != engine.RIGHT:
-                    self.dir = engine.LEFT
-            if ev.key == K_RIGHT:
+                    self.next_dir = engine.LEFT # We need to buffer this as next_dir so that you can't kill yourself by pressing two buttons really quickly and doubling back on yourself
+            if ev.key in [K_RIGHT, K_d]:
                 if self.dir != engine.LEFT:
-                    self.dir = engine.RIGHT
-            if ev.key == K_UP:
+                    self.next_dir = engine.RIGHT
+            if ev.key in [K_UP, K_w]:
                 if self.dir != engine.DOWN:
-                    self.dir = engine.UP
-            if ev.key == K_DOWN:
+                    self.next_dir = engine.UP
+            if ev.key in [K_DOWN, K_s]:
                 if self.dir != engine.UP:
-                    self.dir = engine.DOWN
+                    self.next_dir = engine.DOWN
 
     def ev_draw(self, DISPLAY_SURF):
-        self.update_rect()
         pg.draw.rect(DISPLAY_SURF, Snake.COLOR, self.rect)
 
 class SnakeBody(object):
@@ -169,99 +165,82 @@ class SnakeBody(object):
     IMG_Y = engine.GRID_Y
 
     COLOR = engine.Colors.BRIGHTGREEN
+
+    @property
+    def rect(self):
+        return pg.Rect(self.x, self.y, SnakeBody.IMG_X, SnakeBody.IMG_Y)
+
     def __init__(self, pos, next_segment):
-        self.pos = sp.array(pos)
-        self.pos_prev = copy(self.pos)
+        self.x, self.y = pos
 
         self.dir = engine.RIGHT
 
-        self.update_rect()
-
         self.next_segment = next_segment
 
-    def crawl_to(self, pos):
-        """ Call this to move this snake body segment
+    def crawl_to(self, x, y):
+        """ Call this to move this snake body segment and the entire rest of the snake
             """
-        old_pos = self.pos
-        self.pos = copy(pos)
+        old_x, old_y = self.x, self.y
+        self.x, self.y = x, y
         if self.next_segment:
-            self.next_segment.crawl_to(old_pos)
+            self.next_segment.crawl_to(old_x, old_y)
 
     # GameObject methods:
 
-    def update_rect(self):
-        self.rect = pg.Rect(self.pos[0], self.pos[1], SnakeBody.IMG_X, SnakeBody.IMG_Y)
-
     def ev_step(self):
         pass
-
     def ev_collision(self, other):
         print "SnakeBody + ", other.__class__.__name__
-
-    def ev_postcollision(self):
-        pass
-
     def ev_step_begin(self):
         pass
-
     def ev_step_end(self):
         pass
-
     def ev_boundary_collision(self, side):
         pass
-
     def ev_outside_room(self):
         pass
-
     def process_event(self, ev):
+        pass
+    def ev_destroy(self):
         pass
 
     def ev_draw(self, DISPLAY_SURF):
-        self.update_rect()
         pg.draw.rect(DISPLAY_SURF, SnakeBody.COLOR, self.rect)
+        # radius = 32 # TODO delete
+        # pg.draw.circle(DISPLAY_SURF, engine.Colors.CYAN, [self.x, self.y], radius)
 
 class Food(object):
     IMG_X = 12 # image width
     IMG_Y = 12 # image height
+
     COLOR = engine.Colors.RED
-    def __init__(self, pos=None):
-        if pos == None:
-            all_other_food = filter(lambda inst: isinstance(inst, Food), engine.all_instances)
-            # print all_other_food # TODO this all has to move into a create event
-            # all_other_food.remove(self)
-            while True:
-                x = int(sp.rand() * engine.WINDOW_WIDTH/engine.GRID_X)*engine.GRID_X # todo ref random or sp.random instead
-                y = int(sp.rand() * engine.WINDOW_HEIGHT/engine.GRID_Y)*engine.GRID_Y
-                pos = (x, y)
-                if len(engine.get_instances_at_position(all_other_food, pos)) == 0:
-                    break
-        self.pos = sp.array(pos)
 
-        self.pos_prev = copy(pos)
-
-        self.update_rect()
-
-    def update_rect(self):
-        self.rect = pg.Rect(
-                self.pos[0] + (engine.GRID_X-Food.IMG_X)/2,
-                self.pos[1] + (engine.GRID_Y-Food.IMG_Y)/2,
+    @property
+    def rect(self):
+        return pg.Rect(
+                self.x + (engine.GRID_X-Food.IMG_X)/2,
+                self.y + (engine.GRID_Y-Food.IMG_Y)/2,
                 Food.IMG_X,
                 Food.IMG_Y
         )
-        # todo is there a better way to do this, just updating the position? I think there is...
+
+    def __init__(self, pos=None):
+        if pos == None:
+            while True:
+                x = engine.random_int(engine.WINDOW_WIDTH // engine.GRID_X) * engine.GRID_X
+                y = engine.random_int(engine.WINDOW_HEIGHT // engine.GRID_Y) * engine.GRID_Y
+                pos = (x, y)
+                pos_center = (x + engine.GRID_X//2, y + engine.GRID_Y//2)
+
+                if len(engine.get_instances_at_position(pos_center)) == 0:
+                    break
+                else:
+                    print "FOOD placement collsiion; retrying...\n"
+
+        self.x, self.y = pos
 
     def ev_collision(self, other):
-        if isinstance(other, Snake):
-            engine.destroy(self)
-            engine.all_instances.append(Food())
-
-    def ev_postcollision(self):
-        print "Food post"
-
-    def __del__(self):
-        print "deleting"
         pass
-
     def ev_step_end(self):
         pass
     def ev_step(self):
@@ -270,11 +249,11 @@ class Food(object):
         pass
     def process_event(self, ev):
         pass
+    def ev_destroy(self): # NOTE: this here is a good reason why we need ev_destroy instead of just __del__ (I think; you could get an infinite loop when quitting the game)
+        engine.game_room.create(Food)
+
     def ev_draw(self, DISPLAY_SURF):
-        self.update_rect()
         pg.draw.rect(DISPLAY_SURF, Food.COLOR, self.rect)
 
-
-
 if __name__ == '__main__':
-    engine.main('Snake', init_room)
+    engine.main('Snake', create_room())
