@@ -1,17 +1,27 @@
+def g(start, val=None):
+    x = 4
+    if start:
+        g.x = val
+    else:
+        print g.x, x
+
+g(True, 30)
+g(False)
+g(False)
+
 class X:
-    def __init__(self, a):
-        self.a = a
-        self.__b = a
+    def f(self, start, val=None):
+        if start:
+            self.f.x = val
+        else:
+            print self.f.x
+x=X()
+y=X()
 
-    def m(self):
-        print self.a
-        print self.__b
+x.f(True, 50)
+x.f(False)
+x.f(False)
 
-def a2(self):
-    print (2*self.a)
-    print (2*self.__b)
-
-x = X(2)
-x.m()
-x.m = lambda: a2(x)
-x.m()
+y.f(True, 100)
+y.f(False)
+y.f(False)

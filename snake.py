@@ -1,6 +1,8 @@
+#!/usr/bin/env python
+
 import engine
 
-from pygame.locals import * # TODO remove eventually; currently needed for MOUSEBUTTONUP etc. (I think- this is an untested claim)
+from pygame.locals import * # TODO remove eventually; currently needed for MOUSEBUTTONUP etc.
 
 import scipy as sp
 from copy import copy
@@ -34,6 +36,7 @@ class Snake(engine.GameObject):
         if self.just_eaten:
             old_neck = self.neck
             self.neck = engine.game_room.create(SnakeBody, self.pos, old_neck)
+            self.length += 1
 
             self.just_eaten = False
         else:
@@ -43,9 +46,6 @@ class Snake(engine.GameObject):
 
     def ev_collision(self, other):
         if isinstance(other, Food):
-            self.length += 1
-            print "Length", self.length
-
             self.just_eaten = True
             engine.game_room.destroy(other)
         if isinstance(other, SnakeBody):
@@ -70,6 +70,10 @@ class Snake(engine.GameObject):
             elif ev.key in [K_DOWN, K_s]:
                 if not all(self.dpos == engine.UP):
                     self.next_dpos = engine.DOWN
+
+    def ev_draw(self, screen):
+        super(self.__class__, self).ev_draw(screen)
+        engine.draw_text(screen, "Length: %d"%self.length, (2, 2))
 
 class SnakeBody(engine.GameObject):
     sprite = engine.Sprite(engine.GRID, engine.Colors.BRIGHT_GREEN)

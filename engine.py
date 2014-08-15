@@ -3,15 +3,58 @@
 
 from __future__ import division
 
+__version__ = 0.1
+
 from copy import copy
 import pygame as pg
 import scipy as sp
-# from numpy.linalg import norm
-
 import itertools as itt
+
 import sys
+import os
+import logging
 
 from pygame.locals import *
+
+def init_logger(output_dir='.', console_level=logging.INFO):
+    """
+    Created with help from http://aykutakin.wordpress.com/2013/08/06/logging-to-console-and-file-in-python/
+    """
+
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter("LOG:%(name)s:%(levelname)8s:    %(message)s")
+
+    # Create a console handler (Level: INFO)
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(console_level)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # Create an error file handler (Level: ERROR)
+    out_file = os.path.join(output_dir, "error.log")
+    try:
+        os.remove(out_file)
+    except OSError:
+        pass
+    handler = logging.FileHandler(out_file, "w", encoding=None, delay="true") # TODO learn what these flags do
+    handler.setLevel(logging.ERROR)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    # Create a debug file handler (Level: DEBUG)
+    out_file = os.path.join(output_dir, "debug.log")
+    try:
+        os.remove(out_file)
+    except OSError:
+        pass
+    handler = logging.FileHandler(out_file, "w")
+    handler.setLevel(logging.DEBUG)
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+    return logger
+logger = init_logger()
 
 # variables named "dpos" usually refer to these
 RIGHT = sp.array((1, 0)) # TODO do something with these
@@ -64,21 +107,21 @@ def main(window_title, first_room):
 
     pg.init()
     FPS_CLOCK = pg.time.Clock()
-    DISPLAY_SURF = pg.display.set_mode(first_room.dimensions)
+    screen = pg.display.set_mode(first_room.dimensions)
     pg.display.set_caption(window_title)
 
     try:
         game_room.populate_room()
         while True: # Main game loop
-            game_tick(FPS_CLOCK, DISPLAY_SURF)
+            game_tick(FPS_CLOCK, screen)
     except:
         pg.quit()
         raise # pass the exception to the cmd line, which will print it for us
 
-def game_tick(FPS_CLOCK, DISPLAY_SURF):
+def game_tick(FPS_CLOCK, screen):
     global game_room
 
-    DISPLAY_SURF.fill(bgColor) #todo move to right before the draw events?
+    screen.fill(bgColor) #todo move to right before the draw events?
 
     for inst in copy(game_room.all_instances):
         inst.ev_step_begin()
@@ -104,9 +147,9 @@ def game_tick(FPS_CLOCK, DISPLAY_SURF):
         # TODO order?
 
     for inst in copy(game_room.all_instances):
-        inst.ev_draw(DISPLAY_SURF)
+        inst.ev_draw(screen)
 
-    draw_text(str(int(FPS_CLOCK.get_fps()))+" fps", (1, 1), Colors.WHITE, True, DISPLAY_SURF)
+    draw_text(screen, str(int(FPS_CLOCK.get_fps()))+" fps", game_room.dimensions - (60, 16))
     pg.display.update() # TODO difference between this and pg.display.flip()?
     FPS_CLOCK.tick(FPS)
 
@@ -158,7 +201,7 @@ def check_rect_overlap(rect1, rect2):
 
 def _do_collisions(instances):
     for inst_a, inst_b in _do_find_collisions(instances):
-        print "Collision detected: %s + %s"%(inst_a.__class__.__name__, inst_b.__class__.__name__) # DEBUG
+        logger.debug("Collision detected: %s + %s"%(inst_a.__class__.__name__, inst_b.__class__.__name__))
         inst_a.ev_collision(inst_b)
 
 @pipe(list)
@@ -192,8 +235,17 @@ def get_instances_at_position(pos):
         Calculated by seeing what instances would collide with a point
         """
     for inst in copy(game_room.all_instances):
-        if inst.rect != None and check_rect_overlap(inst.rect, pg.Rect(pos, (0, 0))): # TODO this is different than pygame.Rect.collidePoint (b/c of the top left border). rectify this somehow UPDATE: wait maybe not. check it.
+        if inst.rect != None and inst.rect.collidepoint(pos):
             yield inst
+
+def is_free(pos, allowed_instances):
+    """ Returns whether the given position is free of instances. Instances in allowed_instances are ignored
+    """
+    # If there are any instances at the next position, they must all be on the allowed instances list:
+    return all(
+        inst in allowed_instances
+        for inst in get_instances_at_position(pos)
+    )
 
 def clamp(x, a, b):
     ''' Clamps the value of x to be between a and b:
@@ -203,10 +255,22 @@ def clamp(x, a, b):
         '''
     return min(max(a, x), b)
 
-def draw_text(text, pos, text_color, smooth, DISPLAY_SURF): # TODO clean up/generalize this
+def grid_view(g_top, g_left, g_width, g_height):
+    """
+    TODO document this. Basically this returns a view of the instances on the game grid within the given rectangle (given in grid coordinates, not world coordinates)
+    """
+    assert g_width > 0
+    assert g_height > 0
+    return sp.array([[get_instances_at_position((g_left+dg_x, g_top+dg_y)*GRID) for dg_x in range(g_width)] for dg_y in range(g_height)])
+
+def snap_to_grid(pos):
+    # TODO test that this works properly
+    return (pos // GRID).astype(int) * GRID # yes, using 'astype' is necessary, even though I'm also using '//' for division
+
+def draw_text(screen, text, pos, text_color=Colors.WHITE, smooth=True): # TODO clean up/generalize this
     myfont = pg.font.SysFont("Courier", 16)
     surf = myfont.render(text, smooth, text_color)
-    DISPLAY_SURF.blit(surf, pos)
+    screen.blit(surf, pos)
 
 random_int = sp.random.randint
 
@@ -234,7 +298,7 @@ class GameRoom(object):
         """
         self._instances_to_create = []
         self._all_instances = []
-        self.dimensions = dimensions
+        self.dimensions = sp.array(dimensions)
 
     def create(self, class_, *args, **kwargs):
         """ Use this to create all GameObjects
@@ -279,13 +343,17 @@ class Alarm(object):
 
     def ev_step(self):
         self.time_left -= 1
-        assert self.time_left >= 0
-        if self.time_left <= 0: # TODO should this really be <= ?
-            self.fxn() # perform the delayed action
+        if self.time_left == 0:
+            self.fxn() # Perform the delayed action
             if self.repeat:
                 self.reset()
-            else:
-                Alarm.all_alarms.remove(self)
+
+    def time_since_last_activation(self):
+        # TODO test
+        if self.time_left > 0:
+            return self.activation_time - self.time_left
+        else:
+            return -self.time_left
 
     def reset(self):
         self.time_left = self.activation_time
@@ -300,15 +368,15 @@ class Sprite(object):
         self.color = color
         self.center = center
 
-    def ev_draw(self, DISPLAY_SURF, pos):
-        pg.draw.rect(DISPLAY_SURF, self.color, self.rect.move(*pos))
+    def ev_draw(self, screen, pos):
+        pg.draw.rect(screen, self.color, self.rect.move(*pos))
 Sprite.DEFAULT = Sprite(GRID, Colors.WHITE)
 
 class GameObject(object):
     class CollisionType(object):
         """ See _do_find_collisions() for an explanation of these codes
         """
-        NONE = 0 # NOTE: It's important with the current logic that bool(NONE) is False
+        NONE = 0; assert not NONE
         PASSIVE = 1
         ACTIVE = 2
     collisions = CollisionType.PASSIVE
@@ -317,8 +385,7 @@ class GameObject(object):
 
     @property
     def rect(self):
-        # print "GameObject rect.getter"
-        return self.__class__.sprite.rect.move(*self.pos)
+        return self.sprite.rect.move(*self.pos)
 
     @property
     def x(self):
@@ -335,7 +402,7 @@ class GameObject(object):
         self.pos[1] = value
 
     def __init__(self, pos):
-        # print "GameObject __init__:", self.__class__.__name__ # DEBUG
+        logger.debug("%s: default __init__()"%self.__class__.__name__)
         self.pos = sp.array(pos)
 
     def ev_step_begin(self):
@@ -349,13 +416,14 @@ class GameObject(object):
     def ev_boundary_collision(self, side):
         pass
     def ev_outside_room(self):
+        logger.debug("%s: default ev_outside_room()"%self.__class__.__name__)
         game_room.destroy(self)
     def ev_step_end(self):
         pass
-    def ev_draw(self, DISPLAY_SURF):
-        self.sprite.ev_draw(DISPLAY_SURF, self.pos)
+    def ev_draw(self, screen):
+        self.sprite.ev_draw(screen, self.pos)
     def ev_destroy(self):
-        print "%s: default destroy event"%self.__class__.__name__
+        logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
 
 class GhostObject(GameObject): #TODO does this have pos? i think it does- kill it
     """ Represents a GameObject that has no position, rectangle, sprite, or collisions
@@ -371,7 +439,7 @@ class GhostObject(GameObject): #TODO does this have pos? i think it does- kill i
     def __init__(self):
         pass
 
-    def ev_draw(self, DISPLAY_SURF):
+    def ev_draw(self, screen):
         pass
 
 class GameController(GhostObject):
