@@ -16,3 +16,4 @@ howto:
         https://docs.google.com/document/d/1fRrfvIAiUR8uqZa_KPDWHZAQIkB443-su7j6cEyFPrI/pub
     basic pygame, esp animating
         http://openbookproject.net/thinkcs/python/english3e/pygame.html
+

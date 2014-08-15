@@ -1,0 +1,78 @@
+Space-warped
+Time-warped
+Open world
+RPG
+Rouge-like
+Permadeath
+FPS
+3D
+2D
+Puzzle
+Platformer
+Multiplayer
+Point-and-click
+Mathematical
+Shoot-em-up
+Beat-em-up
+Resource management
+Simulation
+Strategic
+RTS
+Dungeon crawler
+Pokemon
+Mindless
+Kinect/athletic
+Waves/hordes
+Realistic
+Racing
+Artistic
+Repetitive
+Built around one moment
+Sports
+Halo/Shooter
+Top-down
+Maze
+Horror
+Score-based
+Rhythm
+Fantasy
+Team-based
+Educational
+Character classes
+0-player
+Sandbox/Godmode
+Painting
+Programming
+Reaction-based
+Tonal
+Decision Tree
+Isometric
+Bullet-time
+PvP
+PvE
+Turn-based
+Perspective
+Megaman powerups
+Color
+Damage Control
+Self-balancing
+Falling floor
+Outrunning
+Maps
+Sailing
+Tower defense
+Randomly-generated
+Fish-eat-fish
+Stealth
+Scrolling
+Arcade
+Real $$$
+Piracy
+Social
+Word game
+Dance
+You are the enemy
+Obfuscated controls
+GM
+Risk-taking
+Unfair
