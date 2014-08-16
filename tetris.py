@@ -5,6 +5,7 @@ import pygame as pg
 from pygame.locals import *
 
 import sys
+from time import sleep
 import logging
 
 import scipy as sp
@@ -22,13 +23,13 @@ logger.info("tetris.py hello")
 def _make_side(g_dimensions):
     class Side(engine.GameObject):
         """A boundary around the play area"""
-        sprite = engine.Sprite(engine.GRID*g_dimensions, engine.Colors.DARK_GRAY)
+        sprite = engine.Sprite(engine.GRID*g_dimensions, engine.Color.DARK_GRAY)
     return Side
 g_arena_width, g_arena_height = (8, 14)
 SideSide = _make_side((1, g_arena_height))
 BottomSide = _make_side((g_arena_width+2, 1))
 
-g_HUD_width = 5
+g_HUD_width = 6
 
 def populate_room(self):
     self.create(Controller)
@@ -38,25 +39,36 @@ def populate_room(self):
 room = engine.GameRoom.make_room(populate_room, dimensions=engine.GRID*(g_arena_width+2+g_HUD_width, g_arena_height+1))
 
 class Controller(engine.GameController):
-    MOVE_DELAY = 15
+    BLOCK_GROUP_POS = engine.GRID*(g_arena_width//2, 0)
+    NEXT_BLOCK_GROUP_POS = engine.GRID*(g_arena_width+2 + g_HUD_width//2 - 1, 3)
 
     def __init__(self):
-        super(self.__class__, self).__init__()
-        self.move_alarm = engine.Alarm.new_alarm(lambda: self.lower_block_group(), Controller.MOVE_DELAY)
-        self.block_group = engine.game_room.create(BlockGroup)
-        self.is_held = {K_DOWN: False, K_LEFT: False, K_RIGHT: False} # TODO
+        super(Controller, self).__init__()
+
+        self.move_delay = 30
+        # Register methods
+        self.move_alarm = engine.Alarm.new_alarm(lambda: self.lower_block_group(), self.move_delay)
+
+        self.block_group = engine.game_room.create(BlockGroup, Controller.BLOCK_GROUP_POS)
+        self.next_block_group = engine.game_room.create(BlockGroup, Controller.NEXT_BLOCK_GROUP_POS)
+
         self.score = 0
+        self.total_lines = 0
 
     def use_next_block_group(self):
         """ Destroys the current BG, checks for lines, and creates a new BG
         """
-        self.test_for_lines()
+        self.process_lines()
         engine.game_room.destroy(self.block_group)
-        self.block_group = engine.game_room.create(BlockGroup)
 
+        self.block_group = self.next_block_group
+        if not self.block_group.attempt_move_to(Controller.BLOCK_GROUP_POS): # Lose
+            engine.game_room.destroy(self)
+
+        self.next_block_group = engine.game_room.create(BlockGroup, Controller.NEXT_BLOCK_GROUP_POS)
 
     # TODO get rid of all instances of "+= engine.GRID" and make it all "+= 1" somehow
-    def test_for_lines(self):
+    def process_lines(self):
         grid_x, grid_y = engine.GRID
         g_top = 0
         g_left = 1
@@ -78,60 +90,91 @@ class Controller(engine.GameController):
                     for inst_list in row:
                         for inst in inst_list:
                             inst.y += engine.GRID[1]
-        self.score += [0, 1, 3, 5, 10][lines] # NOTE: this would break if it were possible to get more than 4 lines at once
+        self.score += [0, 10, 30, 50, 100][lines] # NOTE: this would break if it were possible to get more than 4 lines at once
+        self.total_lines += lines
+        if lines == 4:
+            engine.game_room.create(TetrisMessage)
+        self.calculate_move_delay()
 
-    # about to work on this:
-    # @engine.keyhandler(K_DOWN, K_SPACE)
-    # def handle_k_down(self, key, press_length):
-    #     if press_length == engine.KeyStatus.KEY_PRESS:
-    #         pass
-    #     elif status == engine.KeyStatus.KEY_HELD:
-    #         pass
-    #     elif status == engine.KeyStatus.KEY_RELEASE:
-    #         pass
-
-    def ev_step(self):
-        # TODO
-        if self.is_held[K_DOWN]: # This one is special; it resets the drop timer and forces a new block group to spawn if it fails
-            self.lower_block_group()
-        if self.is_held[K_LEFT]:
-            self.block_group.attempt_move(engine.LEFT)
-        if self.is_held[K_RIGHT]:
-            self.block_group.attempt_move(engine.RIGHT)
+    def calculate_move_delay(self):
+        self.move_delay = engine.clamp(30-self.total_lines**1.6//50, 1, 30)
 
     # NOTE: this is on an alarm
     def lower_block_group(self):
-        is_success = self.block_group.attempt_move(engine.DOWN)
+        is_success = self.block_group.attempt_move_relative(engine.DOWN)
 
         if not is_success:
             self.use_next_block_group()
-        self.move_alarm.reset()
+        self.move_alarm.reset(self.move_delay)
 
         return is_success
 
-    def process_event(self, ev):
-        super(self.__class__, self).process_event(ev)
-        if ev.type == KEYDOWN:
-            if ev.key in [K_LEFT, K_RIGHT, K_DOWN]:
-                self.is_held[ev.key] = True # TODO refactor into engine
-            elif ev.key == K_a:
+    def ev_key(self, key, status):
+        super(Controller, self).ev_key(key, status)
+        if status == engine.InputManager.Constants.PRESSED:
+            if key == K_a:
                 self.block_group.attempt_rotate(-1)
-            elif ev.key == K_d:
+            elif key == K_d:
                 self.block_group.attempt_rotate(1)
-            elif ev.key == K_s:
+            elif key == K_s: # Drop the BG as far as it can go
                 while self.lower_block_group():
-                    pass
-        elif ev.type == KEYUP and ev.key in [K_LEFT, K_RIGHT, K_DOWN]:
-            self.is_held[ev.key] = False
-        elif ev.type == MOUSEBUTTONDOWN:
+                    # You get more score the higher you drop it from
+                    self.score += 2
+            elif key == K_LEFT:
+                self.block_group.attempt_move_relative(engine.LEFT)
+            elif key == K_RIGHT:
+                self.block_group.attempt_move_relative(engine.RIGHT)
+        elif status == engine.InputManager.Constants.HELD:
+            if key == K_DOWN: # This one is special; it resets the drop timer and forces a new block group to spawn if it fails
+                # You score points for pressing K_DOWN
+                self.score += 1
+                self.lower_block_group()
+
+    def process_event(self, ev):
+        super(Controller, self).process_event(ev)
+        if ev.type == MOUSEBUTTONDOWN:
             print map(lambda inst: inst.__class__.__name__, engine.get_instances_at_position(ev.pos))
 
     def ev_draw(self, screen):
-        super(self.__class__, self).ev_draw(screen)
+        super(Controller, self).ev_draw(screen)
         engine.draw_text(screen, "Score: %d"%self.score, engine.GRID*(g_arena_width+2, 0))
+        engine.draw_text(screen, "Lines: %d"%self.total_lines, engine.GRID*(g_arena_width+2, 1))
+
+    def ev_destroy(self):
+        print "Tough luck!"
+        print "\tTotal Lines:", self.total_lines
+        print "\tScore:", self.score
+        sleep(0.25)
+        engine.terminate()
+
+class TetrisMessage(engine.GhostObject):
+    """A banner than tells the player she got a tetris"""
+    font = pg.font.SysFont(None, 72)
+    msg = "TETRIS!"
+    center = (font.size(msg)[0]//2, 0)
+
+    def __init__(self, pos=engine.GRID*(1 + g_arena_width//2, g_arena_height//2)):
+        super(TetrisMessage, self).__init__()
+        self.pos = pos
+
+        # Register alarms
+        engine.Alarm.new_alarm(lambda: self.change_color(), 20)
+        engine.Alarm.new_alarm(lambda: engine.game_room.destroy(self), 30)
+
+        self.color = engine.Color.BRIGHT_GREEN
+
+    def change_color(self):
+        self.color = engine.Color.GREEN
+
+    def ev_draw(self, screen):
+        engine.draw_text(screen, "TETRIS!", self.pos-TetrisMessage.center, font=TetrisMessage.font, color=self.color)
 
 class BlockGroup(engine.GhostObject):
-    def __init__(self, pos=engine.GRID*(g_arena_width//2, 0)):
+    @property
+    def center_pos(self):
+        return self.group[0].center_pos + self.relative_rotation_center
+
+    def __init__(self, pos):
         self.group = self.generate_blocks(pos)
 
     def generate_blocks(self, pos):
@@ -139,26 +182,26 @@ class BlockGroup(engine.GhostObject):
         The possible configurations are:
              -------------------------------------------
             |  0   | 1  | 2    | 3   | 4   | 5   | 6    |
-            |  +o+ | o+ | +o++ | +o+ | +o+ |  o+ | +o   |
+            |  +o+ | oL | +oL+ | +o+ | +o+ |  o+ | +o   |
             |   +  | ++ |      | +   |   + | ++  |  ++  |
              -------------------------------------------
-            KEY: '+'s are blocks, 'o's are the 'head' block that the configuration is (roughly) centered on (see cut(1)(configs))
-                TODO updating: make 1 3 and 4 rotate around 1/2 blocks
+            KEY: '+'s are blocks, 'o's are the 'head' block that the configuration is centered on, unless there's an 'L'; then it's centered at the corner where the L is pointing
         """
         L  = engine.LEFT
         R  = engine.RIGHT
         D  = engine.DOWN
 
-        configs = [ # Entry format: ([relative positions of blocks], center of rotation relative to head block)
-            ([L, R, D], (0.5, 0.5)),
-            ([R, D, D+R], (1, 1)),
-            ([L, R, R+R], (1, 1)),
-            ([L, R, D+L], (-1, 1)),
-            ([L, R, D+R], (1, 1)),
-            ([R, D+L, D], (1, 1)),
-            ([L, D, D+R], (1, 1))
+        configs = [ # Entry format: ([relative positions of blocks], center of rotation relative to the center of the head block)
+            ([L, R, D], (0, 0)),
+            ([R, D, D+R], (0.5, 0.5)),
+            ([L, R, R+R], (0.5, 0.5)),
+            ([L, R, D+L], (0, 0)),
+            ([L, R, D+R], (0, 0)),
+            ([R, D+L, D], (0, 0)),
+            ([L, D, D+R], (0, 0))
         ]
         relative_positions, self.relative_rotation_center = random.choice(configs)
+        self.relative_rotation_center = (sp.array(self.relative_rotation_center)*engine.GRID).astype(int)
 
         group = [engine.game_room.create(Block, pos)]
         for dpos in relative_positions:
@@ -173,36 +216,41 @@ class BlockGroup(engine.GhostObject):
         """
         assert direction in [-1, 1]
         rotation_matrix = sp.array([[0, -1], [1, 0]]) * direction
-        head = self.group[0]
-        rotation_center = head.pos
         new_positions = []
         for block in self.group:
-            relative_pos = block.pos - rotation_center
+            relative_pos = block.center_pos - self.center_pos
             relative_pos = sp.dot(rotation_matrix, relative_pos)
-            new_positions.append((rotation_center + relative_pos).astype(int))
+            new_positions.append((self.center_pos + relative_pos).astype(int))
 
         is_success = all(engine.is_free(pos, self.group) for pos in new_positions)
 
         if is_success:
-            for pos, block in zip(new_positions, self.group):
-                block.pos = pos
+            for c_pos, block in zip(new_positions, self.group):
+                block.center_pos = c_pos
+
+            # Rotate the rotation center
+            self.relative_rotation_center = sp.dot(rotation_matrix, self.relative_rotation_center)
         return is_success
 
-    def attempt_move(self, dpos):
+    # TODO this is super gross because of g_ / non g_ interaction. Standardize
+    def attempt_move_to(self, pos):
+        g_dpos = (pos - self.group[0].pos) // engine.GRID
+        return self.attempt_move_relative(g_dpos)
+
+    def attempt_move_relative(self, g_dpos):
         """ Tries to move the block group down by one
         Returns whether the move was successful
         """
-        is_success = all(engine.is_free(block.pos + engine.GRID*dpos, self.group) for block in self.group)
+        is_success = all(engine.is_free(block.pos + engine.GRID*g_dpos, self.group) for block in self.group)
 
         if is_success:
             for block in self.group:
-                block.pos += engine.GRID*dpos
+                block.pos += engine.GRID*g_dpos
         return is_success
 
     def ev_draw(self, screen):
-        super(self.__class__, self).ev_draw(screen)
-        rotation_center = self.group[0].pos + engine.GRID*self.relative_rotation_center
-        pg.draw.circle(screen, engine.Colors.RED, rotation_center.astype(int), 4)
+        super(BlockGroup, self).ev_draw(screen)
+        pg.draw.circle(screen, engine.Color.RED, self.center_pos, 4)
 
     def ev_destroy(self):
         for block in self.group:
@@ -210,8 +258,8 @@ class BlockGroup(engine.GhostObject):
 
 class Block(engine.GameObject):
     collisions = engine.GameObject.CollisionType.ACTIVE # The instances start ACTIVE but become PASSIVE when they land
-    sprite = engine.Sprite(engine.GRID, engine.Colors.BRIGHT_BLUE)
-    settled_sprite = engine.Sprite(engine.GRID, engine.Colors.BLUE)
+    sprite = engine.Sprite(engine.GRID, engine.Color.BRIGHT_BLUE)
+    settled_sprite = engine.Sprite(engine.GRID, engine.Color.BLUE)
 
     def settle(self):
         """

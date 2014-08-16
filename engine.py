@@ -10,11 +10,16 @@ import pygame as pg
 import scipy as sp
 import itertools as itt
 
+from collections import defaultdict
+
 import sys
 import os
 import logging
 
 from pygame.locals import *
+
+from decorators import *
+
 
 def init_logger(output_dir='.', console_level=logging.INFO):
     """
@@ -65,44 +70,31 @@ DOWN  = sp.array((0, 1))
 FPS = 30
 GRID = sp.array((32, 32)) # TODO clean these up, probably merge into GameRoom
 
-# MOUSE_POS = [0, 0] # NOTE: mutable
-
-class Colors:
+class Color:
     #                R    G    B
-    WHITE        = (255, 255, 255)
-    BLACK        = (  0,   0,   0)
+    BLACK         = (  0,   0,   0)
+    DARK_GRAY     = ( 63,  63,  63)
+    GRAY          = (127, 127, 127)
+    WHITE         = (255, 255, 255)
+
     BRIGHT_RED    = (255,   0,   0)
-    RED          = (155,   0,   0)
+    RED           = (127,   0,   0)
     BRIGHT_GREEN  = (  0, 255,   0)
-    GREEN        = (  0, 155,   0)
+    GREEN         = (  0, 127,   0)
     BRIGHT_BLUE   = (  0,   0, 255)
-    BLUE         = (  0,   0, 155)
-    BRIGHT_YELLOW = (255, 255,   0)
-    YELLOW       = (155, 155,   0)
-    DARK_GRAY     = ( 40,  40,  40)
+    BLUE          = (  0,   0, 127)
 
-    GRAY         = (100, 100, 100)
-    NAVY_BLUE     = ( 60,  60, 100)
-    WHITE        = (255, 255, 255)
-    ORANGE       = (255, 128,   0)
-    PURPLE       = (255,   0, 255)
-    CYAN         = (  0, 255, 255)
+    YELLOW        = (127, 127,   0)
+    PURPLE        = (255,   0, 255)
+    CYAN          = (  0, 255, 255)
 
-    ALL = (WHITE, BLACK, BRIGHT_RED, RED, BRIGHT_GREEN, GREEN, BRIGHT_BLUE, BLUE, BRIGHT_YELLOW, YELLOW, DARK_GRAY, GRAY, NAVY_BLUE, WHITE, ORANGE, PURPLE, CYAN)
+    NAVY_BLUE     = ( 63,  63, 127)
+    ORANGE        = (255, 127,   0)
 
-bgColor = Colors.NAVY_BLUE
-
-def pipe(postprocessor): #TODO move to another file and import
-    def _decorator(fxn):
-        def _fxn(*args, **kwargs):
-            return postprocessor(fxn(*args, **kwargs))
-        return _fxn
-    return _decorator
+    ALL = (BLACK, DARK_GRAY, GRAY, WHITE, BRIGHT_RED, RED, BRIGHT_GREEN, GREEN, BRIGHT_BLUE, BLUE, YELLOW, PURPLE, CYAN, NAVY_BLUE, ORANGE)
 
 def main(window_title, first_room):
-    # global MOUSE_POS
     global game_room
-    # global FPS_CLOCK
     game_room = first_room
 
     pg.init()
@@ -121,7 +113,7 @@ def main(window_title, first_room):
 def game_tick(FPS_CLOCK, screen):
     global game_room
 
-    screen.fill(bgColor) #todo move to right before the draw events?
+    screen.fill(game_room.bgcolor) #todo move to right before the draw events?
 
     for inst in copy(game_room.all_instances):
         inst.ev_step_begin()
@@ -129,9 +121,8 @@ def game_tick(FPS_CLOCK, screen):
     for alarm in Alarm.all_alarms:
         alarm.ev_step()
 
-    events = pg.event.get() # TODO do I also need to call pygame.event.poll()?
-    #todo enginde idea: have it hold a table of keys and whether or not they're pressed, down, or released
-    for ev in events:
+    events = pg.event.get()
+    for ev in input_manager.filter_events(events):
         for inst in copy(game_room.all_instances):
             inst.process_event(ev)
 
@@ -149,7 +140,8 @@ def game_tick(FPS_CLOCK, screen):
     for inst in copy(game_room.all_instances):
         inst.ev_draw(screen)
 
-    draw_text(screen, str(int(FPS_CLOCK.get_fps()))+" fps", game_room.dimensions - (60, 16))
+    color = (FPS_CLOCK.get_fps() > (2*FPS)//3) and Color.WHITE or Color.BRIGHT_RED
+    draw_text(screen, str(int(FPS_CLOCK.get_fps()))+" fps", game_room.dimensions - (60, 16), color=color)
     pg.display.update() # TODO difference between this and pg.display.flip()?
     FPS_CLOCK.tick(FPS)
 
@@ -267,14 +259,85 @@ def snap_to_grid(pos):
     # TODO test that this works properly
     return (pos // GRID).astype(int) * GRID # yes, using 'astype' is necessary, even though I'm also using '//' for division
 
-def draw_text(screen, text, pos, text_color=Colors.WHITE, smooth=True): # TODO clean up/generalize this
-    myfont = pg.font.SysFont("Courier", 16)
-    surf = myfont.render(text, smooth, text_color)
+pg.font.init()
+courier = pg.font.SysFont("Courier", 16)
+def draw_text(screen, text, pos, font=courier, color=Color.WHITE, smooth=True): # TODO clean up/generalize this
+    surf = font.render(text, smooth, color)
     screen.blit(surf, pos)
 
 random_int = sp.random.randint
 
-# TODO there's lots of stuff that will break when you add multiple rooms. The main game loop will break, for one
+# TODO make this work somehow. It's all messed up currently. Right now you as a game programmer will never have to use input_manager.register_key_handler since it's done automatically in GameObject.__init__()
+# This decorator will register its wrapped function to recieve engine key events
+# @decorator
+# def keyhandler(fxn):
+#     for key in keys:
+#         input_manager.register_key_handler(fxn)
+#     return fxn
+class InputManager(object):
+    """My custom input manager. It manages key events. I plan to add support for mouse events too"""
+    class Constants:
+        PRESSED = 1
+        HELD = 2
+        RELEASED = 3
+
+    def __init__(self):
+        self.key_handlers = []
+        # self.mouse_handlers = [] # TODO <add mouse support>
+
+        # Entry format: {key or button: PRESSED or HELD or RELEASED}
+        self.key_statuses = {}
+        # self.mouse_button_statuses = {} # TODO <add mouse support>
+
+    def filter_events(self, events):
+        """
+        This is the main function you call. TODO document better
+        """
+        # Filter keyboard events out of events
+        for ev in events:
+            if ev.type in [KEYDOWN, KEYUP]:
+                self.process_key_event(ev)
+        self.process_held_keys()
+
+        # for ev in events:
+        #     if ev.type in [MOUSEBUTTONDOWN, MOUSEMOTION, MOUSEBUTTONUP]: # TODO <add mouse support>
+        #         self.process_mouse_event(ev)
+        #         events.remove(ev)
+        # self.process_held_mouse_buttons() # TODO <add mouse support>
+
+        return filter(lambda ev: ev.type not in [KEYDOWN, KEYUP], events) # TODO try to do this better. you CANNOT use events.remove(ev)- it's buggy
+
+    # Keyboard methods:
+
+    def register_key_handler(self, fxn):
+        self.key_handlers.append(fxn)
+
+    def process_held_keys(self):
+        for key in self.key_statuses:
+            if self.key_statuses[key] == InputManager.Constants.PRESSED:
+                self.key_statuses[key] = InputManager.Constants.HELD
+            if self.key_statuses[key] == InputManager.Constants.HELD:
+                self.notify_key_handlers(key)
+
+    def process_key_event(self, ev):
+        key = ev.key
+        status = self.key_statuses[key] = {
+            KEYDOWN: InputManager.Constants.PRESSED,
+            KEYUP: InputManager.Constants.RELEASED
+        }[ev.type]
+
+        self.notify_key_handlers(key)
+
+    def notify_key_handlers(self, key):
+        logger.debug("Key %d in state %d", key, self.key_statuses[key])
+        for handler in self.key_handlers:
+            handler(key, self.key_statuses[key])
+
+    # Mouse Button methods:
+    # TODO make this all work. it needs to track the position as it gets dragged around
+input_manager = InputManager()
+
+# TODO Generalize this. There's lots of stuff that will break when you add multiple rooms. (e.g. the main() game loop will break)
 class GameRoom(object):
 
     @property
@@ -293,11 +356,12 @@ class GameRoom(object):
         room.populate_room = lambda: populate_room(room) # TODO see if there's a better way to make this work; I want to be able to say room.populate_room = populate_room but then self isn't auto-passed in for some reason
         return room
 
-    def __init__(self, dimensions=(640, 480)):
+    def __init__(self, bgcolor=Color.GRAY, dimensions=(640, 480)):
         """ Do not use this to create rooms; use GameRoom.make_room() instead
         """
         self._instances_to_create = []
         self._all_instances = []
+        self.bgcolor = bgcolor
         self.dimensions = sp.array(dimensions)
 
     def create(self, class_, *args, **kwargs):
@@ -320,6 +384,7 @@ class GameRoom(object):
         raise NotImplementedError("This should have be overridden")
 
 # TODO make alarms deorators. you can start them with my_alarm_func.activate
+# TODO make this class structed symmetrically with InputManager. Maybe have two classes: AlarmManager and Alarm. Or change InputManager
 class Alarm(object):
     all_alarms = []
 
@@ -355,22 +420,23 @@ class Alarm(object):
         else:
             return -self.time_left
 
-    def reset(self):
+    def reset(self, new_activation_time=None):
+        if new_activation_time is not None:
+            self.activation_time = new_activation_time
         self.time_left = self.activation_time
 
 class Sprite(object):
     @property
     def rect(self):
-        return pg.Rect(self.center, self.dimensions)
+        return pg.Rect((0, 0), self.dimensions)
 
-    def __init__(self, dimensions, color, center=(0, 0)):
-        self.dimensions = copy(dimensions)
+    def __init__(self, dimensions, color):
+        self.dimensions = sp.array(dimensions)
         self.color = color
-        self.center = center
 
     def ev_draw(self, screen, pos):
         pg.draw.rect(screen, self.color, self.rect.move(*pos))
-Sprite.DEFAULT = Sprite(GRID, Colors.WHITE)
+Sprite.DEFAULT = Sprite(GRID, Color.WHITE)
 
 class GameObject(object):
     class CollisionType(object):
@@ -383,9 +449,11 @@ class GameObject(object):
 
     sprite = Sprite.DEFAULT
 
+
     @property
     def rect(self):
         return self.sprite.rect.move(*self.pos)
+
 
     @property
     def x(self):
@@ -401,10 +469,36 @@ class GameObject(object):
     def y(self, value):
         self.pos[1] = value
 
+
+    @property
+    def center_pos(self):
+        return self.pos + self.sprite.dimensions//2
+    @center_pos.setter
+    def center_pos(self, value):
+        self.pos = value - self.sprite.dimensions//2
+
+    @property
+    def center_x(self):
+        return self.pos[0] + self.sprite.dimensions[0]//2
+    @center_x.setter
+    def center_x(self, value):
+        self.pos[0] = value - self.sprite.dimensions[0]//2
+
+    @property
+    def center_y(self):
+        return self.pos[1] + self.sprite.dimensions[1]//2
+    @center_y.setter
+    def center_y(self, value):
+        self.pos[1] = value - self.sprite.dimensions[1]//2
+
+
     def __init__(self, pos):
         logger.debug("%s: default __init__()"%self.__class__.__name__)
         self.pos = sp.array(pos)
+        input_manager.register_key_handler(lambda *args: self.ev_key(*args)) # TODO IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself. TODO this is too complicated; the whole system needs to be changed :/
 
+    def ev_key(self, key, state):
+        pass
     def ev_step_begin(self):
         pass
     def process_event(self, ev):
@@ -425,7 +519,7 @@ class GameObject(object):
     def ev_destroy(self):
         logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
 
-class GhostObject(GameObject): #TODO does this have pos? i think it does- kill it
+class GhostObject(GameObject): # TODO does this have pos? i think it does- kill it
     """ Represents a GameObject that has no position, rectangle, sprite, or collisions
     """
 
@@ -443,13 +537,14 @@ class GhostObject(GameObject): #TODO does this have pos? i think it does- kill i
         pass
 
 class GameController(GhostObject):
+    def __init__(self):
+        super(GameController, self).__init__()
+        input_manager.register_key_handler(lambda *args: self.ev_key(*args)) # TODO IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself. TODO this is too complicated; the whole system needs to be changed :/
+
     def process_event(self, ev):
-        if self.is_quit_event(ev):
+        if ev.type == QUIT:
             terminate()
 
-    @staticmethod
-    def is_quit_event(ev):
-        return (
-            ev.type == QUIT
-            or (ev.type == KEYUP and ev.key == K_ESCAPE)
-        )
+    def ev_key(self, key, status):
+        if key == K_ESCAPE and status == InputManager.Constants.PRESSED:
+            terminate()
