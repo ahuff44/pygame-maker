@@ -5,10 +5,6 @@ PyGMe
             is the ev_postcollision(self) good enough? is it best? should postcollsions just be ev_end_step?? but readability...
             maybe do collisions immediately whenever you move (use @property) and do postcollsions later
 
-TODO:
-    add Rock
-    abstract to a High-level object
-
 howto:
     game loops: fixed time for physics/AI, flexible time for drawing:
         http://gameprogrammingpatterns.com/game-loop.html

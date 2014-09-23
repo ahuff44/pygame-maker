@@ -1,27 +1,18 @@
-def g(start, val=None):
-    x = 4
-    if start:
-        g.x = val
-    else:
-        print g.x, x
+class MyMeta(type):
+    def __init__(cls, name, bases, dct):
+        obj = map(str, (cls, name, map(str, bases), dct))
+        print "%s, %s, %s, %s"%tuple(obj)
 
-g(True, 30)
-g(False)
-g(False)
+class MyKlass(object):
+    __metaclass__ = MyMeta
 
-class X:
-    def f(self, start, val=None):
-        if start:
-            self.f.x = val
-        else:
-            print self.f.x
-x=X()
-y=X()
+    attr = 4
 
-x.f(True, 50)
-x.f(False)
-x.f(False)
+    def __init__(self, *args):
+        print "Initialized"
 
-y.f(True, 100)
-y.f(False)
-y.f(False)
+print
+print "Done defining"
+print
+
+k = MyKlass(3, 5)

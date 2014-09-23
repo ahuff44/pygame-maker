@@ -1,5 +1,5 @@
-# TODO test the speed of pygame.sprite.collide_rect... can I overwrite it? pretty please?
-# TODO replace GM terminology object->class. keep "instance" though
+# TODO make GameObject inherit from pygame.Sprite. Learn how that junk code works. See C:\Program Files\Anaconda\Lib\site-packages\pygame\examples\aliens.py
+# TODO unify terminology
 
 from __future__ import division
 
@@ -67,10 +67,10 @@ UP    = sp.array((0, -1))
 LEFT  = sp.array((-1, 0))
 DOWN  = sp.array((0, 1))
 
-FPS = 30
+TARGET_FPS = 30
 GRID = sp.array((32, 32)) # TODO clean these up, probably merge into GameRoom
 
-class Color:
+class MyColor: # TODO some of these names suck
     #                R    G    B
     BLACK         = (  0,   0,   0)
     DARK_GRAY     = ( 63,  63,  63)
@@ -79,17 +79,20 @@ class Color:
 
     BRIGHT_RED    = (255,   0,   0)
     RED           = (127,   0,   0)
+    BRIGHT_YELLOW = (255, 255,   0)
+    YELLOW        = (127, 127,   0)
+    BRIGHT_ORANGE = (255, 127,   0)
+    ORANGE        = (127,  63,   0)
     BRIGHT_GREEN  = (  0, 255,   0)
     GREEN         = (  0, 127,   0)
     BRIGHT_BLUE   = (  0,   0, 255)
     BLUE          = (  0,   0, 127)
+    BRIGHT_PURPLE = (255,   0, 255)
+    PURPLE        = (127,   0, 127)
 
-    YELLOW        = (127, 127,   0)
-    PURPLE        = (255,   0, 255)
+
     CYAN          = (  0, 255, 255)
-
     NAVY_BLUE     = ( 63,  63, 127)
-    ORANGE        = (255, 127,   0)
 
     ALL = (BLACK, DARK_GRAY, GRAY, WHITE, BRIGHT_RED, RED, BRIGHT_GREEN, GREEN, BRIGHT_BLUE, BLUE, YELLOW, PURPLE, CYAN, NAVY_BLUE, ORANGE)
 
@@ -129,9 +132,9 @@ def game_tick(FPS_CLOCK, screen):
     for inst in copy(game_room.all_instances):
         inst.ev_step()
 
-    _do_collisions(copy(game_room.all_instances)) # NOTE: This copy() is very important because of filtering I do later
-    _do_boundary_collisions(copy(game_room.all_instances))
-    _do_outside_room_events(copy(game_room.all_instances))
+    _do_collisions()
+    _do_boundary_collisions()
+    _do_outside_room_events()
 
     for inst in copy(game_room.all_instances):
         inst.ev_step_end()
@@ -140,15 +143,15 @@ def game_tick(FPS_CLOCK, screen):
     for inst in copy(game_room.all_instances):
         inst.ev_draw(screen)
 
-    color = (FPS_CLOCK.get_fps() > (2*FPS)//3) and Color.WHITE or Color.BRIGHT_RED
+    color = (FPS_CLOCK.get_fps() > (2*TARGET_FPS)//3) and MyColor.WHITE or MyColor.BRIGHT_RED
     draw_text(screen, str(int(FPS_CLOCK.get_fps()))+" fps", game_room.dimensions - (60, 16), color=color)
     pg.display.update() # TODO difference between this and pg.display.flip()?
-    FPS_CLOCK.tick(FPS)
+    FPS_CLOCK.tick(TARGET_FPS)
 
 
-def _do_boundary_collisions(instances):
-    for inst in instances:
-        if inst.rect:
+def _do_boundary_collisions():
+    for inst in copy(game_room.solid_instances):
+        if inst.rect is not None:
             side = get_boundary_touching(inst.rect)
             if side != None:
                 inst.ev_boundary_collision(side)
@@ -164,9 +167,9 @@ def get_boundary_touching(rect): #TODO rename; and think seriously about the fac
     if rect.top <= 0:
         return UP
 
-def _do_outside_room_events(instances):
-    for inst in instances:
-        if inst.rect:
+def _do_outside_room_events():
+    for inst in copy(game_room.solid_instances):
+        if inst.rect is not None:
             if is_outside_room(inst.rect):
                 inst.ev_outside_room()
 
@@ -175,37 +178,21 @@ def is_outside_room(rect):
 
 def check_rect_overlap(rect1, rect2):
     return rect1.colliderect(rect2)
-    # return (
-    #         check_interval_overlap((rect1.left, rect1.right), (rect2.left, rect2.right))
-    #         and check_interval_overlap((rect1.top, rect1.bottom), (rect2.top, rect2.bottom))
-    # )
 
-# def check_interval_overlap(t1, t2):
-#     ''' Returns whether $(a, b)$ interected with $(c, d)$ is not the empty set,
-#             where t1 and t2 are tuples (a, b) and (c, d);
-#         '''
-#     (a, b) = t1
-#     (c, d) = t2
-#     assert a <= b, 'Malformed interval'
-#     assert c <= d, 'Malformed interval'
-#     return b > c and d > a
-#     # return not(a <= b <= c <= d or c <= d <= a <= b)
-
-def _do_collisions(instances):
-    for inst_a, inst_b in _do_find_collisions(instances):
+def _do_collisions():
+    for inst_a, inst_b in _do_find_collisions():
         logger.debug("Collision detected: %s + %s"%(inst_a.__class__.__name__, inst_b.__class__.__name__))
         inst_a.ev_collision(inst_b)
 
 @pipe(list)
-def _do_find_collisions(instances):
-    ''' Finds collisions among the instances.
-        It completely ignores any instance with collisions == GameObject.CollisionType.NONE
+def _do_find_collisions():
+    ''' Finds collisions among the current game_room's solid instances.
         It only generates collision events for instances with collisions == GameObject.CollisionType.ACTIVE,
             but these events can involve the ACTIVE instance colliding with a PASSIVE instacnce
         '''
-    colliding_instances = filter(lambda inst: inst.collisions, instances) # NOTE: This list has been copy()ed before
+    colliding_instances = copy(game_room.solid_instances)
     for i, inst_a in enumerate(colliding_instances):
-        if inst_a.collisions == GameObject.CollisionType.ACTIVE:
+        if inst_a.collisions == SolidObject.CollisionType.ACTIVE:
             for inst_b in colliding_instances[i+1:]:
                 if inst_a == inst_b:
                     raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine; there's probably an instance that is on the instance list twice)") # TODO make sure this actually throws this error if there are duplicates
@@ -217,16 +204,17 @@ def _do_find_collisions(instances):
 
 # Convinience functions:
 
-def terminate(): # TODO make a mixin to be added to Controllers that automatically does this
-    pg.quit() # redundant because of the try-catch
+def terminate():
+    game_room.ev_room_end() # TODO fix infinite terminate/ev_destroy loop that is possible (e.g. in snake.py)
+    pg.quit() # TODO redundant because of the try-catch (?)
     sys.exit()
 
 @pipe(list)
 def get_instances_at_position(pos):
     """ Returns a list off all instances that are at the given position
-        Calculated by seeing what instances would collide with a point
+        Calculated by seeing what instances would collide with a point- so if an object is non-colliding, it won't show up here
         """
-    for inst in copy(game_room.all_instances):
+    for inst in copy(game_room.solid_instances):
         if inst.rect != None and inst.rect.collidepoint(pos):
             yield inst
 
@@ -247,7 +235,7 @@ def clamp(x, a, b):
         '''
     return min(max(a, x), b)
 
-def grid_view(g_top, g_left, g_width, g_height):
+def grid_view_slow(g_left, g_top, g_width, g_height):
     """
     TODO document this. Basically this returns a view of the instances on the game grid within the given rectangle (given in grid coordinates, not world coordinates)
     """
@@ -255,13 +243,29 @@ def grid_view(g_top, g_left, g_width, g_height):
     assert g_height > 0
     return sp.array([[get_instances_at_position((g_left+dg_x, g_top+dg_y)*GRID) for dg_x in range(g_width)] for dg_y in range(g_height)])
 
-def snap_to_grid(pos):
-    # TODO test that this works properly
-    return (pos // GRID).astype(int) * GRID # yes, using 'astype' is necessary, even though I'm also using '//' for division
+# def grid_view(g_left, g_top, g_width, g_height): #TODO working here
+#     assert g_width > 0
+#     assert g_height > 0
+#     rect = pg.Rect(g_left, g_top, g_width, g_height)
+#     view = [[None]*g_width]*g_height
+#     for inst in game_room.all_instances:
+#         try:
+#             g_x, g_y = inst.pos//GRID
+#         except AttributeError: # Happens if inst.pos doesn't exist
+#             continue
+#         if rect.collidepoint(g_x, g_y):
+#             view[g_y-g_top][g_x-g_left] = inst
+#     return view
+
+def floor_to_grid(pos):
+    return (pos // GRID).astype(int) * GRID
+
+def round_to_grid(pos):
+    return sp.round_(pos / GRID).astype(int) * GRID
 
 pg.font.init()
 courier = pg.font.SysFont("Courier", 16)
-def draw_text(screen, text, pos, font=courier, color=Color.WHITE, smooth=True): # TODO clean up/generalize this
+def draw_text(screen, text, pos, font=courier, color=MyColor.WHITE, smooth=True): # TODO clean up/generalize this
     surf = font.render(text, smooth, color)
     screen.blit(surf, pos)
 
@@ -345,6 +349,10 @@ class GameRoom(object):
         return self._all_instances
 
     @property
+    def solid_instances(self):
+        return filter(lambda inst: isinstance(inst, SolidObject), self.all_instances)
+
+    @property
     def rect(self):
         return pg.Rect((0, 0), self.dimensions)
 
@@ -356,7 +364,7 @@ class GameRoom(object):
         room.populate_room = lambda: populate_room(room) # TODO see if there's a better way to make this work; I want to be able to say room.populate_room = populate_room but then self isn't auto-passed in for some reason
         return room
 
-    def __init__(self, bgcolor=Color.GRAY, dimensions=(640, 480)):
+    def __init__(self, bgcolor=MyColor.GRAY, dimensions=(640, 480)):
         """ Do not use this to create rooms; use GameRoom.make_room() instead
         """
         self._instances_to_create = []
@@ -365,7 +373,7 @@ class GameRoom(object):
         self.dimensions = sp.array(dimensions)
 
     def create(self, class_, *args, **kwargs):
-        """ Use this to create all GameObjects
+        """ Use this to create GameObjects
         """
         # TODO add a check to make sure the inst is callable? or I suppose it'll error automatically
         # The order of the following two lines is arbitrary but very important:
@@ -374,11 +382,14 @@ class GameRoom(object):
         return inst
 
     def destroy(self, inst):
-        """ Use this to destroy all GameObjects
+        """ Use this to destroy GameObjects
         """
         # The order of the following two lines is arbitrary but very important:
-        inst.ev_destroy()
         self.all_instances.remove(inst)
+        inst.ev_destroy()
+
+    def ev_room_end(self):
+        map(self.destroy, copy(self.all_instances))
 
     def populate_room(self):
         raise NotImplementedError("This should have be overridden")
@@ -399,8 +410,8 @@ class Alarm(object):
     def __init__(self, fxn, activation_time, repeat=False):
         """ Do not use this; use Alarm.new_alarm() instead
         """
-        if not activation_time > 0:
-            raise ArgumentError
+        if activation_time <= 0:
+            raise RuntimeError("Alarm cannot be set to a negative activation time")
         self.activation_time = activation_time
         self.time_left = activation_time
         self.fxn = fxn #TODO look up using __func__ or __call__ to do this. see ft.partial maybe?
@@ -422,79 +433,14 @@ class Alarm(object):
 
     def reset(self, new_activation_time=None):
         if new_activation_time is not None:
-            self.activation_time = new_activation_time
+            self.activation_time = int(new_activation_time)
         self.time_left = self.activation_time
 
-class Sprite(object):
-    @property
-    def rect(self):
-        return pg.Rect((0, 0), self.dimensions)
-
-    def __init__(self, dimensions, color):
-        self.dimensions = sp.array(dimensions)
-        self.color = color
-
-    def ev_draw(self, screen, pos):
-        pg.draw.rect(screen, self.color, self.rect.move(*pos))
-Sprite.DEFAULT = Sprite(GRID, Color.WHITE)
-
 class GameObject(object):
-    class CollisionType(object):
-        """ See _do_find_collisions() for an explanation of these codes
-        """
-        NONE = 0; assert not NONE
-        PASSIVE = 1
-        ACTIVE = 2
-    collisions = CollisionType.PASSIVE
+    color = MyColor.WHITE
 
-    sprite = Sprite.DEFAULT
-
-
-    @property
-    def rect(self):
-        return self.sprite.rect.move(*self.pos)
-
-
-    @property
-    def x(self):
-        return self.pos[0]
-    @x.setter
-    def x(self, value):
-        self.pos[0] = value
-
-    @property
-    def y(self):
-        return self.pos[1]
-    @y.setter
-    def y(self, value):
-        self.pos[1] = value
-
-
-    @property
-    def center_pos(self):
-        return self.pos + self.sprite.dimensions//2
-    @center_pos.setter
-    def center_pos(self, value):
-        self.pos = value - self.sprite.dimensions//2
-
-    @property
-    def center_x(self):
-        return self.pos[0] + self.sprite.dimensions[0]//2
-    @center_x.setter
-    def center_x(self, value):
-        self.pos[0] = value - self.sprite.dimensions[0]//2
-
-    @property
-    def center_y(self):
-        return self.pos[1] + self.sprite.dimensions[1]//2
-    @center_y.setter
-    def center_y(self, value):
-        self.pos[1] = value - self.sprite.dimensions[1]//2
-
-
-    def __init__(self, pos):
+    def __init__(self):
         logger.debug("%s: default __init__()"%self.__class__.__name__)
-        self.pos = sp.array(pos)
         input_manager.register_key_handler(lambda *args: self.ev_key(*args)) # TODO IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself. TODO this is too complicated; the whole system needs to be changed :/
 
     def ev_key(self, key, state):
@@ -515,32 +461,82 @@ class GameObject(object):
     def ev_step_end(self):
         pass
     def ev_draw(self, screen):
-        self.sprite.ev_draw(screen, self.pos)
+        pass
     def ev_destroy(self):
         logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
 
-class GhostObject(GameObject): # TODO does this have pos? i think it does- kill it
-    """ Represents a GameObject that has no position, rectangle, sprite, or collisions
-    """
+class SolidObject(GameObject):
+    class CollisionType(object):
+        """ See _do_find_collisions() for an explanation of these codes
+        """
+        PASSIVE = 1
+        ACTIVE = 2
+    collisions = CollisionType.PASSIVE
+    dimensions = copy(GRID)
 
-    collisions = GameObject.CollisionType.NONE
-    sprite = None
+    def __init__(self, pos):
+        super(SolidObject, self).__init__()
+        self.rect = pg.Rect(pos, self.dimensions)
 
     @property
-    def rect(self):
-        return None
+    def pos(self):
+        assert self.rect.topleft == (self.rect.x, self.rect.y)
+        return sp.array((self.rect.x, self.rect.y))
+        # return sp.array(self.rect.topleft)
+    @pos.setter
+    def pos(self, value):
+        self.rect.x, self.rect.y = value
 
-    def __init__(self):
-        pass
+    @property
+    def x(self):
+        return self.rect.x
+    @x.setter
+    def x(self, value):
+        self.rect.x = value
+
+    @property
+    def y(self):
+        return self.rect.y
+    @y.setter
+    def y(self, value):
+        self.rect.y = value
+
+
+    @property
+    def center_pos(self):
+        return sp.array(self.rect.center)
+    @center_pos.setter
+    def center_pos(self, value):
+        self.rect.center = value
+
+    @property
+    def center_x(self):
+        return self.rect.centerx
+    @center_x.setter
+    def center_x(self, value):
+        self.rect.centerx = value
+
+    @property
+    def center_y(self):
+        return self.rect.centery
+    @center_y.setter
+    def center_y(self, value):
+        self.rect.centery = value
 
     def ev_draw(self, screen):
-        pass
+        pg.draw.rect(screen, self.color, self.rect)
+
+class GridObject(SolidObject):
+    pass
+
+
+
+class GhostObject(GameObject): # TODO does this have pos? i think it does- kill it
+    """ Represents a GameObject that has no position, rectangle, or collisions
+    """
+    pass
 
 class GameController(GhostObject):
-    def __init__(self):
-        super(GameController, self).__init__()
-        input_manager.register_key_handler(lambda *args: self.ev_key(*args)) # TODO IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself. TODO this is too complicated; the whole system needs to be changed :/
-
     def process_event(self, ev):
         if ev.type == QUIT:
             terminate()

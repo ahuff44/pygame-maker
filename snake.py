@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from __future__ import division
 
 import engine
 
@@ -12,9 +13,9 @@ import functools as ft
 import itertools as itt
 
 
-class Snake(engine.GameObject):
-    collisions = engine.GameObject.CollisionType.ACTIVE
-    sprite = engine.Sprite(engine.GRID, engine.Color.GREEN)
+class Snake(engine.SolidObject):
+    collisions = engine.SolidObject.CollisionType.ACTIVE
+    color = engine.MyColor.GREEN
 
     MOVE_DELAY = 4
 
@@ -42,7 +43,7 @@ class Snake(engine.GameObject):
         else:
             self.neck.crawl_to(self.pos)
 
-        self.pos += Snake.sprite.dimensions * self.dpos
+        self.pos += self.dimensions * self.dpos
 
     def ev_collision(self, other):
         if isinstance(other, Food):
@@ -73,15 +74,13 @@ class Snake(engine.GameObject):
     def ev_destroy(self):
         print "Game Over"
         print "\tLength:", self.length
-        sleep(0.25)
         engine.terminate()
 
-class SnakeBody(engine.GameObject):
-    sprite = engine.Sprite(engine.GRID, engine.Color.BRIGHT_GREEN)
+class SnakeBody(engine.SolidObject):
+    color = engine.MyColor.BRIGHT_GREEN
 
     def __init__(self, pos, next_segment):
         super(SnakeBody, self).__init__(pos)
-
         self.next_segment = next_segment
 
     def crawl_to(self, pos):
@@ -92,25 +91,28 @@ class SnakeBody(engine.GameObject):
         if self.next_segment:
             self.next_segment.crawl_to(old_pos)
 
-class Food(engine.GameObject):
-    sprite = engine.Sprite(engine.GRID//2, engine.Color.RED)
+class Food(engine.SolidObject):
+    dimensions = copy(engine.GRID//2)
+    color = engine.MyColor.RED
 
-    def __init__(self, pos=None):
-        if pos is None:
-            room_width, room_height = engine.game_room.dimensions
-            grid_x, grid_y = engine.GRID
-            while True:
-                pos = sp.array((
-                    engine.random_int(room_width // grid_x),
-                    engine.random_int(room_height // grid_y)
-                )) * engine.GRID
+    def __init__(self):
+        super(Food, self).__init__((0, 0))
 
-                pos_center = pos + engine.GRID//2
-                if len(engine.get_instances_at_position(pos_center)) == 0:
-                    break
-                # else: # TODO get logger working
-                #     logger.info("FOOD placement collision; retrying...")
-        super(Food, self).__init__(pos+engine.GRID//4) # TODO as part of the whole center_pos deal, this needs to change
+        # Find a home
+        room_width, room_height = engine.game_room.dimensions
+        grid_x, grid_y = engine.GRID
+        while True:
+            pos = sp.array((
+                engine.random_int(room_width // grid_x),
+                engine.random_int(room_height // grid_y)
+            )) * engine.GRID
+
+            possible_center_pos = pos + engine.GRID//2
+            if len(engine.get_instances_at_position(possible_center_pos)) == 0:
+                break
+            # else: # TODO get logger working
+            #     logger.info("FOOD placement collision; retrying...")
+        self.center_pos = possible_center_pos
 
     def ev_destroy(self): # NOTE: this here is a good reason why we need ev_destroy instead of just __del__ (I think; you could get an infinite loop when quitting the game)
         super(Food, self).ev_destroy()
@@ -121,7 +123,7 @@ def populate_room(self):
     self.create(Snake, (128, 128))
     for _ in range(6):
         self.create(Food)
-room = engine.GameRoom.make_room(populate_room, bgcolor=engine.Color.NAVY_BLUE)
+room = engine.GameRoom.make_room(populate_room, bgcolor=engine.MyColor.NAVY_BLUE)
 
 if __name__ == '__main__':
     engine.main('Snake', room)

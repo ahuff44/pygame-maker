@@ -3,6 +3,8 @@ import scipy as sp
 
 class PropTest(object):
 
+    nope = property(lambda self: 5)
+
     @property
     def x(self):
         return self.pos[0]
@@ -22,6 +24,8 @@ class PropTest(object):
         self.pos = sp.array(pos)
 
 m = PropTest((11, 32))
+# print m.nope
+# m.nope = 3
 print m.x, m.y, m.pos
 m.x = 20
 print m.x, m.y, m.pos
