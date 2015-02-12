@@ -1,10 +1,10 @@
 pygame-maker
 ============
 
-A game engine I built for fun in Python. It's built on the pygame framework (see www.pygame.org). You'll need to install pygame in order to run this.
+An event-driven game engine I built for fun in Python. It's built on the pygame framework (see www.pygame.org). You'll need to install pygame in order to run this. The overall design is similar to and was inspired by Game Maker, published by Yoyo Games (see http://www.yoyogames.com/studio).
 The code has some basic documentation, and if you look at the code for snake.py and tetris.py you might be able to figure out how to make things work.
 
-This is still a work in progress.
+*This is still a work in progress.*
 
 Example games:
 =============
