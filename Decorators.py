@@ -9,7 +9,7 @@ def decorator(decorator_fxn):
         return update_wrapper(decorator_fxn(original_fxn), original_fxn)
     return update_wrapper(modified_decorator, decorator_fxn)
 
-def pipe(postprocessor):
+def postprocess(postprocessor):
     @decorator
     def _decorator(fxn):
         def _fxn(*args, **kwargs):

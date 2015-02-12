@@ -1,3 +1,13 @@
+game plan:
+    split engine into separate files that make sense
+    make snake work
+        make @Alarm a thing
+    unit tests
+
+pygame src:
+    https://bitbucket.org/pygame/pygame/src/823708f24a3a95381704a57f8e7ff4e532a8a05f/lib/?at=default
+    idk if the version is current
+
 PyGMe
     todo:
         add alarm system with named alarms and looping alarms
