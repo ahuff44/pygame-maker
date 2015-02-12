@@ -11,11 +11,17 @@ Snake:
 ![screenshot of snake game](https://raw.github.com/ahuff44/pygame-maker/master/screenshots/snake.png "Wow such snake")
 
 To run, execute this in the command line:
+
 $ ./snake.py
+
+*Controls*: arrow keys or WASD
 
 Tetris:
 -------
 ![screenshot of tetris game](https://raw.github.com/ahuff44/pygame-maker/master/screenshots/tetris.png "Wow such tetris")
 
 To run, execute this in the command line:
+
 $ ./tetris.py
+
+*Controls*: arrow keys to move piece, A and D to rotate, and S to insta-drop the piece
