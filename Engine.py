@@ -46,7 +46,7 @@ def main(window_title, first_room):
     pg.display.set_caption(window_title)
 
     try:
-        current_room.populate_room()
+        current_room.ev_room_start()
         while True: # Main game loop
             game_tick(screen)
     except:
@@ -56,7 +56,7 @@ def main(window_title, first_room):
 def game_tick(screen):
     global current_room
 
-    screen.fill(current_room.bgcolor) #todo: move to right before the draw events?
+    screen.fill(current_room.bgcolor) # TODO: Maybe I should move this to right before the draw events? I'm not sure
 
     for inst in copy(current_room.all_instances):
         inst.ev_step_begin()
@@ -142,7 +142,7 @@ def terminate():
     sys.exit()
 
 def end_game():
-    current_room.ev_room_end() # TODO: fix infinite terminate/ev_destroy loop that is possible (e.g. in snake.py)
+    current_room.ev_room_end() # TODO:make sure there is no possibility for an infinite terminate/ev_destroy loop (look in snake.py)
     terminate()
 
 @postprocess(list)
@@ -171,7 +171,7 @@ def grid_view_slow(g_left, g_top, g_width, g_height):
     assert g_height > 0
     return sp.array([[get_instances_at_position((g_left+dg_x, g_top+dg_y)*current_room.grid) for dg_x in range(g_width)] for dg_y in range(g_height)])
 
-# def grid_view(g_left, g_top, g_width, g_height): #TODO: working here
+# def grid_view(g_left, g_top, g_width, g_height): #TODO: make this work to optimize the above algorithm
 #     assert g_width > 0
 #     assert g_height > 0
 #     rect = pg.Rect(g_left, g_top, g_width, g_height)

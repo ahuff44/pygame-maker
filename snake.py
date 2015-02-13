@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 from __future__ import division
 
-from pygame.locals import * # TODO: remove eventually; currently needed for MOUSEBUTTONUP etc.
+from pygame.locals import * # TODO: remove eventually; currently needed for K_LEFT etc.
 
 import scipy as sp
 from copy import copy
@@ -25,7 +25,7 @@ class Snake(Objects.SolidObject):
 
     MOVE_DELAY = 4
 
-    def __init__(self, pos): #todo: Engine: we'll nee to separate __init__ and create events in order to be able to say friend=instance_create(FriendClass)
+    def __init__(self, pos): #TODO: switch these __init__s out for ev_create
         super(Snake, self).__init__(pos)
 
         Alarms.manager.schedule(Alarms.Alarm(lambda: self.move(), Snake.MOVE_DELAY, repeat=True))

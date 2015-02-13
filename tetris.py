@@ -115,7 +115,7 @@ class Controller(Objects.GameController):
 
         if not is_success:
 
-            # # TODO: working here. based on cprofile and runsnake, it looks like you'll want to optimize grid_view(). I mean duh, it's O(n**2). Implement a whole new CollisionType.GRID maybe? idk if that's too much bloat
+            # # TODO: based on cprofile and runsnake, it looks like you'll want to optimize grid_view(). I mean duh, it's O(n**2). Implement a whole new CollisionType.GRID maybe? idk if that's too much bloat
             # if self.total_lines > 50:
             #     import cProfile
             #     cProfile.runctx("self.use_next_piece()", globals(), locals(), "out%d.profile"%self.total_lines)

@@ -1,4 +1,4 @@
-# TODO: some of these names suck
+# TODO: change these to saner names
 
 #                 R    G    B
 BLACK         = (  0,   0,   0)

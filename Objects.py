@@ -24,7 +24,7 @@ class GameObject(object):
             # TODO: IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself.
         Engine.current_room.all_instances.add(self)
 
-    def ev_create(self):
+    def ev_create(self): #TODO: switch __init__s out for ev_create s
         MyLogger.logger.debug("%s: default ev_create()"%self.__class__.__name__)
     def ev_destroy(self):
         MyLogger.logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
@@ -48,9 +48,9 @@ class GameObject(object):
 
     def ev_boundary_collision(self):
         pass
-    # TODO: implement this:
-    # def ev_room_start(self):
-    #     pass
+    # TODO: implement ev_game_start and ev_game_end, and test ev_room_start
+    def ev_room_start(self):
+        pass
     def ev_room_end(self):
         pass
     def ev_outside_room(self):

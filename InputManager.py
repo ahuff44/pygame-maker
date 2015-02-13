@@ -4,8 +4,7 @@ from Decorators import postprocess
 from copy import copy
 
 
-# TODO: make this work somehow. It's all messed up currently. Right now you as a game programmer will never have to use input_manager.register_key_handler since it's done automatically in GameObject.__init__()
-# TODO: change this so that this is part of a mixin basically
+# TODO: change this so that this is part of a mixin basically. Right now you as a game programmer will never have to use input_manager.register_key_handler since it's done automatically in GameObject.__init__()
 
 PRESSED = 0
 RELEASED = -1
@@ -23,8 +22,10 @@ class InputManager(object):
     @postprocess(list)
     def filter_events(self, events):
         """
-        This is the main function you call. TODO: document better
-        TODO: wait why am i even filtering? I guess so there's only one way to use keyboard events. this had better not be a huge time sink. test this
+        This is the main function you would call in this class.
+        It takes in a list of events, at acts on the ones it recognizes (mouse and keyboard events).
+        It yields back any events it doesn't recognize
+        TODO: wait why am i even filtering? I guess so there's only one way to use keyboard events. this had better not be a huge time sink. profile this code
         """
         # Filter keyboard events out of events
         for ev in events:
