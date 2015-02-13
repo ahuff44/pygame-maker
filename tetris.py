@@ -10,35 +10,42 @@ import random
 import pygame as pg
 from pygame.locals import *
 
-import MyLogger
 import Engine
-import MyColors
 import Objects
-import Alarms
 import Rooms
+import Alarms
+import MyLogger
+import MyColors
+import InputManager
 
-def _make_side(g_dimensions):
-    class Side(Objects.SolidObject):
-        """A boundary around the play area"""
-        dimensions = Engine.GRID*g_dimensions
-        color = MyColors.DARK_GRAY
-    return Side
-g_arena_width, g_arena_height = (10, 16)
-SideSide = _make_side((1, g_arena_height))
-BottomSide = _make_side((g_arena_width+2, 1))
 
-g_HUD_width = 6
+
+g_HUD_width = 6 # How wide the HUD is in grid squares
+g_arena_width, g_arena_height = (10, 16) # similar
+room_grid_size = sp.array((32,32)) # TODO: this doesn't react correctly when you change it
 
 def populate_room(room):
+    class Wall(Objects.SolidObject):
+        """A boundary around the play area"""
+        color = MyColors.DARK_GRAY
+
+        def __init__(self, pos, g_dimensions):
+            super(Wall, self).__init__(pos, room_grid_size*g_dimensions)
+
     room.create(Controller)
-    room.create(SideSide, Engine.GRID*(0, 0))
-    room.create(SideSide, Engine.GRID*(g_arena_width+1, 0))
-    room.create(BottomSide, Engine.GRID*(0, g_arena_height))
-room = Rooms.GameRoom(populate_room, dimensions=Engine.GRID*(g_arena_width+2+g_HUD_width, g_arena_height+1))
+    room.create(Wall, Engine.current_room.grid*(0, 0), (1, g_arena_height))
+    room.create(Wall, Engine.current_room.grid*(g_arena_width+1, 0), (1, g_arena_height))
+    room.create(Wall, Engine.current_room.grid*(0, g_arena_height), (g_arena_width+2, 1))
+room = Rooms.GameRoom(populate_room, dimensions=room_grid_size*(g_arena_width+2+g_HUD_width, g_arena_height+1))
 
 class Controller(Objects.GameController):
-    PIECE_START_POS = Engine.GRID*(g_arena_width//2, 1)
-    PIECE_WAIT_POS = Engine.GRID*(g_arena_width+2 + g_HUD_width//2 - 1, 3)
+    @property
+    def piece_start_pos(self):
+        return Engine.current_room.grid*(g_arena_width//2, 1)
+
+    @property
+    def piece_wait_pos(self):
+        return Engine.current_room.grid*(g_arena_width+2 + g_HUD_width//2 - 1, 3)
 
     def __init__(self):
         super(Controller, self).__init__()
@@ -52,8 +59,8 @@ class Controller(Objects.GameController):
         self.move_piece_alarm = Alarms.Alarm(lambda: self.lower_piece(), self.move_delay)
         Alarms.manager.schedule(self.move_piece_alarm)
 
-        self.piece = Engine.current_room.create(Piece, Controller.PIECE_START_POS)
-        self.next_piece = Engine.current_room.create(Piece, Controller.PIECE_WAIT_POS)
+        self.piece = Engine.current_room.create(Piece, self.piece_start_pos)
+        self.next_piece = Engine.current_room.create(Piece, self.piece_wait_pos)
 
     def use_next_piece(self):
         """ Destroys the current piece, checks for lines, and creates a new piece
@@ -62,14 +69,14 @@ class Controller(Objects.GameController):
         Engine.current_room.destroy(self.piece)
 
         self.piece = self.next_piece
-        if not self.piece.attempt_move_to(Controller.PIECE_START_POS): # Lose
-            Engine.terminate()
+        if not self.piece.attempt_move_to(self.piece_start_pos): # Lose
+            Engine.end_game()
 
-        self.next_piece = Engine.current_room.create(Piece, Controller.PIECE_WAIT_POS)
+        self.next_piece = Engine.current_room.create(Piece, self.piece_wait_pos)
 
-    # TODO: get rid of all instances of "+= Engine.GRID" and make it all "+= 1" somehow
+    # TODO: get rid of all instances of "+= Engine.current_room.grid" and make it all "+= 1" somehow
     def process_lines(self):
-        grid_x, grid_y = Engine.GRID
+        grid_x, grid_y = Engine.current_room.grid
         g_top = 0
         g_left = 1
         g_bottom = g_arena_height
@@ -91,7 +98,7 @@ class Controller(Objects.GameController):
                 for row in reversed(Engine.grid_view_slow(g_left, g_top, g_width, g_y)):
                     for inst_list in row:
                         for inst in inst_list:
-                            inst.y += Engine.GRID[1]
+                            inst.y += Engine.current_room.grid[1]
         self.score += [0, 10, 30, 50, 100][lines] # NOTE: this would break if it were possible to get more than 4 lines at once
         self.total_lines += lines
         if lines == 4:
@@ -121,9 +128,9 @@ class Controller(Objects.GameController):
 
         return is_success
 
-    def ev_keyboard(self, key, status):
-        super(Controller, self).ev_keyboard(key, status)
-        if status == Engine.InputManager.Constants.PRESSED:
+    def ev_keyboard(self, key, press_time):
+        super(Controller, self).ev_keyboard(key, press_time) # Exit on pressing <esc>
+        if press_time == InputManager.PRESSED:
             if key == K_a:
                 self.piece.attempt_rotate(-1)
             elif key == K_d:
@@ -132,11 +139,11 @@ class Controller(Objects.GameController):
                 while self.lower_piece():
                     # You get more score the higher you drop it from
                     self.score += 2
-            elif key == K_LEFT:
+        if press_time == InputManager.PRESSED or (press_time >= 9 and (press_time % 3 == 0)):
+            if key == K_LEFT:
                 self.piece.attempt_move_relative(Engine.LEFT)
             elif key == K_RIGHT:
                 self.piece.attempt_move_relative(Engine.RIGHT)
-        elif status == Engine.InputManager.Constants.HELD:
             if key == K_DOWN: # This one is special; it resets the drop timer and forces a new piece to spawn if it fails
                 # You score points for pressing K_DOWN
                 self.score += 1
@@ -150,10 +157,10 @@ class Controller(Objects.GameController):
 
     def ev_draw(self, screen):
         super(Controller, self).ev_draw(screen)
-        Engine.draw_text(screen, "Score: %d"%self.score, Engine.GRID*(g_arena_width+2, 0))
-        Engine.draw_text(screen, "Lines: %d"%self.total_lines, Engine.GRID*(g_arena_width+2, 1))
+        Engine.draw_text(screen, "Score: %d"%self.score, Engine.current_room.grid*(g_arena_width+2, 0))
+        Engine.draw_text(screen, "Lines: %d"%self.total_lines, Engine.current_room.grid*(g_arena_width+2, 1))
 
-    def ev_destroy(self):
+    def ev_room_end(self):
         print "Tough luck!"
         print "\tTotal Lines:", self.total_lines
         print "\tScore:", self.score
@@ -164,9 +171,12 @@ class TetrisMessage(Objects.GhostObject):
     msg = "TETRIS!"
     center = (font.size(msg)[0]//2, 0)
 
-    def __init__(self, pos=Engine.GRID*(1 + g_arena_width//2, g_arena_height//2)):
+    @property
+    def pos(self):
+        return Engine.current_room.grid*(1 + g_arena_width//2, g_arena_height//2)
+
+    def __init__(self):
         super(TetrisMessage, self).__init__()
-        self.pos = pos
 
         # Register alarms
         Alarms.manager.schedule(Alarms.Alarm(lambda: self.change_color(), 20))
@@ -221,12 +231,12 @@ class Piece(Objects.GhostObject):
             ([L, D, D+R], (0, 0))
         ]
         relative_positions, self.relative_rotation_center = random.choice(configs)
-        self.relative_rotation_center = (sp.array(self.relative_rotation_center)*Engine.GRID).astype(int)
+        self.relative_rotation_center = (sp.array(self.relative_rotation_center)*Engine.current_room.grid).astype(int)
 
         colors = random.choice(Piece.COLORS)
         group = [Engine.current_room.create(Block, pos, colors)]
         for dpos in relative_positions:
-            block_pos = pos + Engine.GRID*dpos
+            block_pos = pos + Engine.current_room.grid*dpos
             group.append(Engine.current_room.create(Block, block_pos, colors))
         return group
 
@@ -255,18 +265,18 @@ class Piece(Objects.GhostObject):
 
     # TODO: this is super gross because of g_ / non g_ interaction. Standardize
     def attempt_move_to(self, pos):
-        g_dpos = (pos - self.group[0].pos) // Engine.GRID
+        g_dpos = (pos - self.group[0].pos) // Engine.current_room.grid
         return self.attempt_move_relative(g_dpos)
 
     def attempt_move_relative(self, g_dpos):
         """ Tries to move the piece down by one
         Returns whether the move was successful
         """
-        is_success = all(Engine.is_free(block.pos + Engine.GRID*g_dpos, self.group) for block in self.group)
+        is_success = all(Engine.is_free(block.pos + Engine.current_room.grid*g_dpos, self.group) for block in self.group)
 
         if is_success:
             for block in self.group:
-                block.pos += Engine.GRID*g_dpos
+                block.pos += Engine.current_room.grid*g_dpos
         return is_success
 
     # def ev_draw(self, screen):
@@ -278,10 +288,10 @@ class Piece(Objects.GhostObject):
             block.settle()
 
 class Block(Objects.SolidObject):
-    dimensions = copy(Engine.GRID)
 
     def __init__(self, pos, colors):
         super(Block, self).__init__(pos)
+    # dimensions = copy(Engine.current_room.grid)
         color, self.settled_color = colors
         self.color = color
 

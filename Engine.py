@@ -1,4 +1,3 @@
-# TODO: make GameObject inherit from pygame.Sprite. Learn how that junk code works. See C:\Program Files\Anaconda\Lib\site-packages\pygame\examples\aliens.py
 # TODO: unify terminology
 
 from __future__ import division
@@ -18,19 +17,19 @@ from pygame.locals import *
 
 # Built-ins:
 # variables named "dpos" usually refer to these
-RIGHT = sp.array(( 1,  0)) # TODO: organize these into something
+RIGHT = sp.array(( 1,  0))
 UP    = sp.array(( 0, -1))
 LEFT  = sp.array((-1,  0))
 DOWN  = sp.array(( 0,  1))
 
 TARGET_FPS = 30
-GRID = sp.array((32, 32)) # TODO: clean these up, probably merge into GameRoom
 
 FPS_CLOCK = pg.time.Clock()
 
 
-import Alarms
 from Decorators import postprocess
+
+import Alarms
 import MyColors
 import Objects
 import MyLogger
@@ -65,7 +64,8 @@ def game_tick(screen):
     Alarms.manager.game_tick()
 
     events = pg.event.get()
-    for ev in InputManager.manager.filter_events(events):
+    events = InputManager.manager.filter_events(events) # Filter out and process input events
+    for ev in events:
         for inst in copy(current_room.all_instances):
             inst.process_event(ev)
 
@@ -121,24 +121,29 @@ def _do_find_collisions():
         It only generates collision events for instances with collisions == GameObject.CollisionType.ACTIVE,
             but these events can involve the ACTIVE instance colliding with a PASSIVE instacnce
         '''
-    colliding_instances = list(copy(current_room.solid_instances))
-    for i, inst_a in enumerate(colliding_instances):
-        if inst_a.collisions == Objects.CollisionType.ACTIVE:
-            for inst_b in colliding_instances[i+1:]:
-                if inst_a == inst_b:
-                    raise Exception("Programmer Logic error; you shouldn't be seeing this message (this is a bug in the game engine; there's probably an instance that is on the instance list twice)") # TODO: make sure this actually throws this error if there are duplicates
-                if (
-                        inst_a.rect != None and inst_b.rect != None
-                        and check_rect_overlap(inst_a.rect, inst_b.rect)
-                ):
-                    yield (inst_a, inst_b)
+    colliding_insts = current_room.solid_instances
+    active_insts = [inst for inst in colliding_insts if inst.collisions == Objects.CollisionType.ACTIVE]
+    for inst_a, inst_b in itt.product(active_insts, colliding_insts):
+            if (
+                    inst_a is not inst_b
+                    and
+                    inst_a.rect is not None and inst_b.rect is not None
+                    and
+                    check_rect_overlap(inst_a.rect, inst_b.rect)
+            ):
+                yield (inst_a, inst_b)
 
 # Convinience functions:
 
 def terminate():
-    current_room.ev_room_end() # TODO: fix infinite terminate/ev_destroy loop that is possible (e.g. in snake.py)
+    """ This is a sloppy quit, bringing things down ASAP. You should probably use end_game() instead
+    """
     pg.quit() # TODO: redundant because of the try-catch (?)
     sys.exit()
+
+def end_game():
+    current_room.ev_room_end() # TODO: fix infinite terminate/ev_destroy loop that is possible (e.g. in snake.py)
+    terminate()
 
 @postprocess(list)
 def get_instances_at_position(pos):
@@ -164,7 +169,7 @@ def grid_view_slow(g_left, g_top, g_width, g_height):
     """
     assert g_width > 0
     assert g_height > 0
-    return sp.array([[get_instances_at_position((g_left+dg_x, g_top+dg_y)*GRID) for dg_x in range(g_width)] for dg_y in range(g_height)])
+    return sp.array([[get_instances_at_position((g_left+dg_x, g_top+dg_y)*current_room.grid) for dg_x in range(g_width)] for dg_y in range(g_height)])
 
 # def grid_view(g_left, g_top, g_width, g_height): #TODO: working here
 #     assert g_width > 0
@@ -173,7 +178,7 @@ def grid_view_slow(g_left, g_top, g_width, g_height):
 #     view = [[None]*g_width]*g_height
 #     for inst in current_room.all_instances:
 #         try:
-#             g_x, g_y = inst.pos//GRID
+#             g_x, g_y = inst.pos//current_room.grid
 #         except AttributeError: # Happens if inst.pos doesn't exist
 #             continue
 #         if rect.collidepoint(g_x, g_y):
@@ -189,10 +194,10 @@ def clamp(x, a, b):
     return min(max(a, x), b)
 
 def floor_to_grid(pos):
-    return (pos // GRID).astype(int) * GRID
+    return (pos // current_room.grid).astype(int) * current_room.grid
 
 def round_to_grid(pos):
-    return sp.round_(pos / GRID).astype(int) * GRID
+    return sp.round_(pos / current_room.grid).astype(int) * current_room.grid
 
 pg.font.init()
 courier = pg.font.SysFont("Courier", 16)

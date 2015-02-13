@@ -11,18 +11,23 @@ import InputManager
 class CollisionType(object):
     """ See _do_find_collisions() for an explanation of these codes
     """
-    NONE = 0
-    PASSIVE = 1
-    ACTIVE = 2
+    NONE, PASSIVE, ACTIVE = range(3)
 
+# TODO: make GameObject inherit from pygame.Sprite to speed things up? sounds nasty... See C:\Program Files\Anaconda\Lib\site-packages\pygame\examples\aliens.py
 class GameObject(object):
-    # All subclasses must define a variable "collisions" that is a member of my CollisionType pseudo-enum
+    # All subclasses must define a variable "collisions" that is a member of the CollisionType pseudo-enum
     color = MyColors.WHITE
 
     def __init__(self):
         MyLogger.logger.debug("%s: default __init__()"%self.__class__.__name__)
-        InputManager.manager.register_key_handler(lambda *args: self.ev_keyboard(*args)) # TODO: IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself. TODO: this is too complicated; the whole system needs to be changed :/
-        # self.__register_collisions() # TODO Feb 2015 not sure what this is referring to; grep finds no matches in this folder
+        InputManager.manager.register_key_handler(lambda *args: self.ev_keyboard(*args)) # TODO: maybe subclass GameObject to save calls to ev_keyboard ?
+            # TODO: IMPORTANT This registers the event for all subclasses, so you never need to use register_key_handler yourself.
+        Engine.current_room.all_instances.add(self)
+
+    def ev_create(self):
+        MyLogger.logger.debug("%s: default ev_create()"%self.__class__.__name__)
+    def ev_destroy(self):
+        MyLogger.logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
 
     def ev_keyboard(self, key, state):
         pass
@@ -33,13 +38,20 @@ class GameObject(object):
     def ev_step(self):
         pass
     def ev_collision(self, other):
-        """ Checks to make sure the game programmer hasn't messed up by giving a ev_collision method to an object that doesn't do collisions"""
-        derived_fxn = self.__class__.ev_collision.__func__
-        base_fxn = Klass.ev_collision.__func__
-        if not self.collisions and derived_fxn is not base_fxn:
-            raise RuntimeError("The object (of type %s (%s)) has no collisions yet it has an ev_collision event"%(type(self), klass.__name__))
+        pass
+        # TODO: figure out what I was trying to do here before
+        # """ Checks to make sure the game programmer hasn't messed up by giving a ev_collision method to an object that doesn't do collisions"""
+        # derived_fxn = self.__class__.ev_collision.__func__
+        # base_fxn = Klass.ev_collision.__func__
+        # if not self.collisions and derived_fxn is not base_fxn:
+        #     raise RuntimeError("The object (of type %s (%s)) has no collisions yet it has an ev_collision event"%(type(self), klass.__name__))
 
     def ev_boundary_collision(self):
+        pass
+    # TODO: implement this:
+    # def ev_room_start(self):
+    #     pass
+    def ev_room_end(self):
         pass
     def ev_outside_room(self):
         MyLogger.logger.debug("%s: default ev_outside_room()"%self.__class__.__name__)
@@ -48,21 +60,19 @@ class GameObject(object):
         pass
     def ev_draw(self, screen):
         pass
-    def ev_destroy(self):
-        MyLogger.logger.debug("%s: default ev_destroy()"%self.__class__.__name__)
 
 class SolidObject(GameObject):
-
     collisions = CollisionType.PASSIVE
-    dimensions = copy(Engine.GRID)
 
-    def __init__(self, pos):
+    def __init__(self, pos, dimensions=None):
         super(SolidObject, self).__init__()
-        self.rect = pg.Rect(pos, self.dimensions)
+        if dimensions is None:
+            dimensions = Engine.current_room.grid
+        self.rect = pg.Rect(pos, dimensions)
 
     @property
     def pos(self):
-        assert self.rect.topleft == (self.rect.x, self.rect.y), "pygame's api sucks again"
+        assert self.rect.topleft == (self.rect.x, self.rect.y), "pygame's API sucks again"
         return sp.array((self.rect.x, self.rect.y))
         # return sp.array(self.rect.topleft)
     @pos.setter
@@ -108,8 +118,9 @@ class SolidObject(GameObject):
     def ev_draw(self, screen):
         pg.draw.rect(screen, self.color, self.rect)
 
-class GridObject(SolidObject):
-    pass
+# TODO: add better/direct support for grid objects
+# class GridObject(SolidObject):
+#     pass
 
 
 
@@ -124,5 +135,5 @@ class GameController(GhostObject):
             terminate()
 
     def ev_keyboard(self, key, status):
-        if key == K_ESCAPE and status == InputManager.Constants.PRESSED:
+        if key == K_ESCAPE and status == InputManager.PRESSED:
             Engine.terminate()

@@ -20,11 +20,13 @@ def basic_logger(name=__name__, output_dir='.', console_level=logging.INFO):
 
     # Create an error file handler (Level: ERROR)
     out_file = os.path.join(output_dir, "error.log")
+
     # Remove the old file if it exists
     try:
         os.remove(out_file)
     except OSError:
         pass
+
     handler = logging.FileHandler(out_file, "w", encoding=None, delay="true") # TODO: learn what these flags do
     handler.setLevel(logging.ERROR)
     handler.setFormatter(formatter)

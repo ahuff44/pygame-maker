@@ -40,7 +40,7 @@ class Alarm(object):
         if not (activation_time > 0 and int(activation_time) == activation_time):
             raise RuntimeError("Alarm activation time must be a positive integer")
 
-class AlarmManager(object): #TEMP: I changed Alarm -> AlarmManager
+class AlarmManager(object):
 
     all_alarms = [] # Data format: [Alarm alarm, ...]
 

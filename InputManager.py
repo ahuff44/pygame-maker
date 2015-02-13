@@ -1,13 +1,14 @@
 from pygame.locals import *
 
 from Decorators import postprocess
+from copy import copy
 
 
 # TODO: make this work somehow. It's all messed up currently. Right now you as a game programmer will never have to use input_manager.register_key_handler since it's done automatically in GameObject.__init__()
 # TODO: change this so that this is part of a mixin basically
 
-class Constants:
-    PRESSED, HELD, RELEASED = range(1, 3+1)
+PRESSED = 0
+RELEASED = -1
 
 class InputManager(object):
     """My custom input manager. It manages key events. I plan to add support for mouse events too"""
@@ -16,7 +17,7 @@ class InputManager(object):
         self.key_handlers = []
         # self.mouse_handlers = [] # TODO: <add mouse support>
 
-        self.keys_held = set() # The keys that are currently held down
+        self.keys_held = {} # The keys that are currently held down, and the number of frames they've been held down
         # self.mouse_button_statuses = {} # TODO: <add mouse support>
 
     @postprocess(list)
@@ -47,21 +48,29 @@ class InputManager(object):
     def process_key_event(self, ev):
         key = ev.key
         if ev.type == KEYDOWN:
-            self.keys_held.add(key)
-            self.notify_key_handlers(key, Constants.PRESSED)
+            self.keys_held[key] = PRESSED
+            self.notify_key_handlers(key)
         elif ev.type == KEYUP:
-            self.keys_held.remove(key) # TODO: might error if you do type-to-learn style alt-hacking
-            self.notify_key_handlers(key, Constants.RELEASED)
+            self.keys_held[key] = RELEASED # TODO: make sure this won't error if you do type-to-learn style alt-hacking
+            self.notify_key_handlers(key)
 
     def process_held_keys(self):
-        for key in self.keys_held:
-            self.notify_key_handlers(key, Constants.HELD)
+        for key in copy(self.keys_held.keys()):
+            val = self.keys_held[key]
+            if val == RELEASED:
+                del self.keys_held[key]
+            else:
+                self.keys_held[key] += 1
+                if val != PRESSED:
+                    self.notify_key_handlers(key)
 
-    def notify_key_handlers(self, key, status):
+    def notify_key_handlers(self, key):
+        """ This notifies all registered key handlers that the specified key has been pressed, and also tells them how long it has been pressed for
+        """
         for handler in self.key_handlers:
-            handler(key, status)
+            handler(key, self.keys_held[key])
 
     # Mouse Button methods:
-    # TODO: make this all work. it needs to track the position as it gets dragged around
+    # TODO: <add mouse support>. It needs to track the position as it gets dragged around
 
 manager = InputManager()
